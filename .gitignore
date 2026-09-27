@@ -1,0 +1,31 @@
+# aiecon workspaces: demo output, live telemetry, provider snapshots, reports
+.aiecon/
+*.duckdb
+*.duckdb.wal
+*.jsonl.tmp
+
+# secrets and local config
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
