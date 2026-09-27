@@ -363,6 +363,7 @@ scope 中纳入 provider、resolved model、account/workspace、region、cache p
 ```python
 def normalize(envelope: RawEnvelope) -> ModelCall: ...
 
+
 def estimate(
     call: ModelCall,
     catalog: PriceCatalog,
@@ -774,7 +775,7 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 | --- | --- | --- |
 | T3.1 | done | CSV/JSON import with manifest hash check; cents 123.45 -> 1.2345; same-hash re-import no-op; new complete snapshot replaces old rows (7 not 12); demo imports 4 synthetic snapshots; commit 2dfa2a7 |
 | T3.2 | done | pollers: pagination, Retry-After, auth fail-fast, staged records+manifest then import (V16 keeps old snapshot); mock-transport tests; billing sync CLI; live reconciliation pending (no admin keys); commit follows |
-| T3.3 | doing | reconcile.py: per (provider, scope, UTC day[, model]) usage and cost buckets, capture_gap evidence adjustment, boundary hypothesis, tolerance classification, shareable line; demo shows matched/explained/unexplained; final test fix pending |
+| T3.3 | done | 8 buckets on demo: openai matched x2, anthropic day1 variance fully explained by capture_gap evidence (unexplained 0), day2 unexplained; scope_mismatch/no_provider_cost/B<=0 covered; shareable line V30 |
 
 **Day 3 可见结果：** 至少一个明确标记来源的完整对账表；具备数据时显示真实对账，否则保留 L0 完整结果与 L1 pending。
 
@@ -782,7 +783,7 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
-| T4.1 | `context_econ.py`、prefix fixtures | 单次不划算、重复可获益、过期重写、已缓存、无证据均有确定结果 |
+| T4.1 | done | section 8.3 rates: N=1 -0.0025, N=2 +0.0065; TTL expiry segments; 1h beats 5m for 8-min gaps; already_cached; no cross scope/key/model merging; demo groups A/B/C/D match expected_metrics; catalog persisted per pricing run |
 | T4.2 | done | discarded attempts (paid and unknown-cost), failed runs (savings null), fallbacks (used never flagged; unknown disposition no savings; labeled removable gives savings); demo: 10 failed runs, 10 discarded attempts, 3 redundant fallbacks |
 | T4.3 | done | V20 one call in three detectors flagged once (unique 1.75 not 3x); best single action = group A cache scenario; CPSO 90-success cohort lower bound with 5 unknown-cost calls; joint savings not computed |
 
@@ -802,15 +803,15 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
-| T6.1 | 边界 fixtures 与有意义的 integration tests | §13 的关键错误都得到正确状态；不以提高测试数量为目标 |
-| T6.2 | `.github/workflows/ci.yml`、`KNOWN_LIMITATIONS.md` | CI 不含 API secrets、无付费调用；有覆盖说明；dependency/secret scan 通过 |
-| T6.3 | 报告视觉与公开文件检查 | 浏览器本地打开 HTML；表格不溢出、数值清楚、无外部资源请求；public artifacts 无真实账号数据 |
+| T6.1 | done | 128 tests: V01-V30 covered by unit/integration/e2e tests incl. CLI chain, exit codes 2/3, workload dry-run subprocess offline |
+| T6.2 | done | ci.yml pinned (checkout v7.0.1, setup-uv v10.2.0, upload-artifact v7.0.1, gitleaks-action v3.0.0); no provider secrets; wheel install check; local gitleaks scan of full history: no leaks; KNOWN_LIMITATIONS.md written; CI green pending first push |
+| T6.3 | done | headless Edge renders at 1200px and 480px reviewed: no external resources, tables scroll inside wrappers, long ids wrap; screenshot in docs/sample-report.png; sample report synthetic banner |
 
 ### Day 7：冻结与公开发布
 
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
-| T7.1 | README、architecture、integration、limitations | 文档中的命令实跑；明确 L0/L1 与已支持 endpoint；删除过期的 aiecon-server 引用 |
+| T7.1 | doing | README per section 15.1 written; docs commands verified by tests; release steps pending |
 | T7.2 | tag `v0.1.0`、GitHub Release、synthetic demo screenshot | tag 对应 CI 通过的 commit；release 描述与实际能力一致；完整代码在同一 public repo |
 
 Day 7 不新增功能。有空余时间只补充真实对账覆盖、修复已发现错误、改进 demo 易用性。
