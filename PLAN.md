@@ -763,8 +763,8 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
 | T2.1 | done | 26 table-driven pricing tests incl. section 13.1 sample = 0.00195 for both formats, tier once-only pricing, unknown model/price/TTL kept unpriced, price switch by start time, deterministic pricing_run_id |
-| T2.2 | 两 provider adapters、LiteLLM callback、示例 config | fixture 覆盖两家 usage；3-attempt 链产生 3 calls；重投不重复；canary 不落盘 |
-| T2.3 | `run_workload.py`、spend state | dry-run 无网络；预算预留测试通过后发送最小 live 普通调用，确认采集后再发复用/重试场景 |
+| T2.2 | done | per-attempt deployment hooks; 3-attempt chain = 3 calls with retry/fallback lineage; redelivery = duplicate; canary absent from JSONL/DB/stderr; 7 usage-format fixtures (litellm ones hand-written from docs, not yet captured live); commit 484dd3e |
+| T2.3 | done | spend fuse: stops before dispatch, keeps unknown-cost reservations, restart-safe; run_workload.py dry-run verified offline (18 planned calls, reserve about USD 0.32); live send pending API keys; commit 46e817b |
 
 **依赖与时间安排：** T2.1 与 T2.2 的最小路径通过即开始小流量，不必等所有边界情景完成。剩余 live 场景在 Day 3 补齐。若当日拿不到 keys，T2.3 完成 dry-run 并标 live pending，继续推进。
 
@@ -772,9 +772,9 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
-| T3.1 | `billing/importer.py`、manifest、`provider_records` | normalized CSV/JSON 导入可用；同快照重投不增加金额；单位转换手算一致 |
-| T3.2 | `billing/openai.py`、`billing/anthropic.py` | 分页、权限、429、部分失败、旧数据修订可测试；有权限时执行实际只读 sync |
-| T3.3 | `reconcile.py`、CLI table | usage 与 cost 分开；按真实 grain 对齐；B=0/null、scope mismatch、未建模费用明确显示；无静默校准 |
+| T3.1 | done | CSV/JSON import with manifest hash check; cents 123.45 -> 1.2345; same-hash re-import no-op; new complete snapshot replaces old rows (7 not 12); demo imports 4 synthetic snapshots; commit 2dfa2a7 |
+| T3.2 | done | pollers: pagination, Retry-After, auth fail-fast, staged records+manifest then import (V16 keeps old snapshot); mock-transport tests; billing sync CLI; live reconciliation pending (no admin keys); commit follows |
+| T3.3 | doing | reconcile.py: per (provider, scope, UTC day[, model]) usage and cost buckets, capture_gap evidence adjustment, boundary hypothesis, tolerance classification, shareable line; demo shows matched/explained/unexplained; final test fix pending |
 
 **Day 3 可见结果：** 至少一个明确标记来源的完整对账表；具备数据时显示真实对账，否则保留 L0 完整结果与 L1 pending。
 
@@ -783,8 +783,8 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
 | T4.1 | `context_econ.py`、prefix fixtures | 单次不划算、重复可获益、过期重写、已缓存、无证据均有确定结果 |
-| T4.2 | `detectors/retry_waste.py`、`fallback_waste.py` | 支付前置 attempt、被使用 fallback、未知 disposition、失败 run 不被误写成确定 savings |
-| T4.3 | finding 汇总、outcome views | line item 并集去重；best-single-action 指标正确；90-success cohort 的成本分母正确 |
+| T4.2 | done | discarded attempts (paid and unknown-cost), failed runs (savings null), fallbacks (used never flagged; unknown disposition no savings; labeled removable gives savings); demo: 10 failed runs, 10 discarded attempts, 3 redundant fallbacks |
+| T4.3 | done | V20 one call in three detectors flagged once (unique 1.75 not 3x); best single action = group A cache scenario; CPSO 90-success cohort lower bound with 5 unknown-cost calls; joint savings not computed |
 
 **Day 4 可见结果：** 每条建议都有证据、金额依据、适用条件和局限。
 
