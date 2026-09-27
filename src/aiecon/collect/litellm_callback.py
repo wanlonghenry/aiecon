@@ -8,6 +8,14 @@ Two layers:
   config. It only forwards the three per-attempt deployment hooks. Request-level hooks are
   deliberately not used because they fire once per logical request (S5).
 
+Shape of the hook arguments as observed with LiteLLM 1.102.1 (probe on 2026-09-27): the
+pre-call kwargs carry the bare deployment ``model`` (``gpt-5-nano``), ``max_tokens``,
+``stream``, ``litellm_call_id``, ``litellm_trace_id``, ``api_key`` and a ``metadata`` dict
+with ``model_group``, ``deployment``, ``deployment_model_name`` and ``model_info``; there is
+no ``litellm_params`` key. The failure hook receives a read-only view of the same kwargs and
+an exception whose ``llm_provider`` names the provider. Only the named fields below are ever
+read; ``api_key``, ``messages`` and anything else are never touched.
+
 Every attempt gets its own ``call_id`` in ``async_pre_call_deployment_hook``. The id is
 attached to *that attempt's* request data (a copied metadata dict, never a shared one) so the
 success/failure hook can find it. Lineage is derived from the application-supplied
@@ -57,9 +65,18 @@ _HEX_RE = re.compile(r"^[0-9a-f]{16,128}$")
 
 PROVIDER_MAP: dict[str, Provider] = {
     "openai": Provider.openai,
-    "azure": Provider.other,
     "anthropic": Provider.anthropic,
 }
+
+# Bare model ids that LiteLLM routes without a provider prefix. Only unambiguous families.
+MODEL_NAME_HINTS: tuple[tuple[str, Provider], ...] = (
+    ("gpt-", Provider.openai),
+    ("chatgpt-", Provider.openai),
+    ("o1", Provider.openai),
+    ("o3", Provider.openai),
+    ("o4", Provider.openai),
+    ("claude-", Provider.anthropic),
+)
 
 API_FAMILY_BY_PROVIDER: dict[Provider, ApiFamily] = {
     Provider.openai: ApiFamily.chat_completions,
@@ -105,6 +122,33 @@ def _get(obj: Any, key: str) -> Any:
     return getattr(obj, key, None)
 
 
+def _mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def provider_from_model_name(model: str | None) -> Provider | None:
+    """Provider implied by a model id: explicit ``prefix/`` first, then known families."""
+
+    if not isinstance(model, str) or not model:
+        return None
+    if "/" in model:
+        prefix = model.split("/", 1)[0].lower()
+        return PROVIDER_MAP.get(prefix, Provider.other)
+    lowered = model.lower()
+    for hint, provider in MODEL_NAME_HINTS:
+        if lowered.startswith(hint):
+            return provider
+    try:  # LiteLLM knows far more families; use it when it is importable
+        from litellm import get_llm_provider
+
+        _model, provider_name, _key, _base = get_llm_provider(model=model)
+    except Exception:  # noqa: BLE001 - unknown model or LiteLLM absent
+        return None
+    if isinstance(provider_name, str):
+        return PROVIDER_MAP.get(provider_name.lower(), Provider.other)
+    return None
+
+
 @dataclass
 class CollectorConfig:
     dataset_id: str
@@ -139,43 +183,60 @@ class EnvelopeCollector:
     # ------------------------------------------------------------ helpers
     @staticmethod
     def _litellm_params(kwargs: Mapping[str, Any]) -> Mapping[str, Any]:
-        params = kwargs.get("litellm_params")
-        return params if isinstance(params, Mapping) else {}
+        return _mapping(kwargs.get("litellm_params"))
+
+    @classmethod
+    def _metadata_views(cls, kwargs: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+        """Every place LiteLLM may keep metadata, most specific first."""
+
+        views = [kwargs.get("metadata"), cls._litellm_params(kwargs).get("metadata")]
+        return [v for v in views if isinstance(v, Mapping)]
 
     @classmethod
     def _app_meta(cls, kwargs: Mapping[str, Any]) -> Mapping[str, Any]:
-        for container in (cls._litellm_params(kwargs).get("metadata"), kwargs.get("metadata")):
-            if isinstance(container, Mapping):
-                meta = container.get("aiecon")
-                if isinstance(meta, Mapping):
-                    return meta
+        for container in cls._metadata_views(kwargs):
+            meta = container.get("aiecon")
+            if isinstance(meta, Mapping):
+                return meta
         return {}
 
     @classmethod
     def call_id_from(cls, request_data: Mapping[str, Any]) -> str | None:
-        for container in (
-            cls._litellm_params(request_data).get("metadata"),
-            request_data.get("metadata"),
-        ):
-            if isinstance(container, Mapping):
-                found = _safe_id(container.get("aiecon_call_id"))
-                if found:
-                    return found
+        for container in cls._metadata_views(request_data):
+            found = _safe_id(container.get("aiecon_call_id"))
+            if found:
+                return found
         return None
 
-    def _provider(self, kwargs: Mapping[str, Any]) -> Provider:
-        raw = self._litellm_params(kwargs).get("custom_llm_provider") or kwargs.get(
-            "custom_llm_provider"
-        )
-        if isinstance(raw, str) and raw in PROVIDER_MAP:
-            return PROVIDER_MAP[raw]
-        model = kwargs.get("model")
-        if isinstance(model, str) and "/" in model:
-            prefix = model.split("/", 1)[0]
-            return PROVIDER_MAP.get(prefix, Provider.other)
-        return Provider.other
+    @classmethod
+    def _model_group(cls, kwargs: Mapping[str, Any]) -> str | None:
+        for container in cls._metadata_views(kwargs):
+            group = _safe_id(container.get("model_group"))
+            if group:
+                return group
+        return _safe_id(cls._litellm_params(kwargs).get("model_group"))
 
-    def _context(self, meta: Mapping[str, Any], call_id: str, attempt_index: int) -> EventContext:
+    def _provider(self, kwargs: Mapping[str, Any], *, hint: Any = None) -> Provider:
+        candidates: list[Any] = [
+            hint,
+            kwargs.get("custom_llm_provider"),
+            self._litellm_params(kwargs).get("custom_llm_provider"),
+        ]
+        for container in self._metadata_views(kwargs):
+            deployment = _mapping(container.get("deployment"))
+            candidates.append(_mapping(deployment.get("litellm_params")).get("custom_llm_provider"))
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate:
+                return PROVIDER_MAP.get(candidate.lower(), Provider.other)
+        return provider_from_model_name(kwargs.get("model")) or Provider.other
+
+    def _context(
+        self,
+        meta: Mapping[str, Any],
+        kwargs: Mapping[str, Any],
+        call_id: str,
+        attempt_index: int,
+    ) -> EventContext:
         return EventContext(
             workflow_id=_safe_id(meta.get("workflow_id")),
             workflow_run_id=_safe_id(meta.get("workflow_run_id")),
@@ -184,8 +245,8 @@ class EnvelopeCollector:
             call_id=call_id,
             scope_id=_safe_id(meta.get("scope_id")) or self.config.scope_id,
             attempt_index=attempt_index,
-            trace_id=_safe_id(meta.get("trace_id")),
-            span_id=_safe_id(meta.get("span_id")),
+            trace_id=_safe_id(meta.get("trace_id")) or _safe_id(kwargs.get("litellm_trace_id")),
+            span_id=_safe_id(meta.get("span_id")) or _safe_id(kwargs.get("litellm_call_id")),
         )
 
     def _prefix_fields(self, meta: Mapping[str, Any]) -> dict[str, Any]:
@@ -247,14 +308,14 @@ class EnvelopeCollector:
         if len(self._used_ids) > 100_000:
             self._used_ids.clear()
         model_requested = _safe_id(kwargs.get("model")) or "unknown-model"
-        model_group = _safe_id(self._litellm_params(kwargs).get("model_group")) or model_requested
+        model_group = self._model_group(kwargs) or model_requested
         provider = self._provider(kwargs)
         api_family = API_FAMILY_BY_PROVIDER.get(provider, ApiFamily.unknown)
 
         node_run_id = _safe_id(meta.get("node_run_id"))
         history = self._node_history.get(node_run_id, []) if node_run_id else []
         attempt_index = len(history) + 1
-        context = self._context(meta, call_id, attempt_index)
+        context = self._context(meta, kwargs, call_id, attempt_index)
         if history:
             previous_id = history[-1][0]
             previous = self._attempts.get(previous_id)
@@ -288,17 +349,17 @@ class EnvelopeCollector:
         if node_run_id:
             self._node_history.setdefault(node_run_id, []).append((call_id, ts))
 
-        # attach the id to a *copy* of this attempt's metadata; never mutate shared dicts
-        params = dict(self._litellm_params(kwargs))
-        metadata = (
-            dict(params.get("metadata") or {})
-            if isinstance(params.get("metadata"), Mapping)
-            else {}
-        )
-        metadata["aiecon_call_id"] = call_id
-        params["metadata"] = metadata
+        # attach the id to *copies* of this attempt's metadata; never mutate shared dicts
         new_kwargs = dict(kwargs)
-        new_kwargs["litellm_params"] = params
+        metadata = dict(_mapping(kwargs.get("metadata")))
+        metadata["aiecon_call_id"] = call_id
+        new_kwargs["metadata"] = metadata
+        if isinstance(kwargs.get("litellm_params"), Mapping):
+            params = dict(self._litellm_params(kwargs))
+            inner = dict(_mapping(params.get("metadata")))
+            inner["aiecon_call_id"] = call_id
+            params["metadata"] = inner
+            new_kwargs["litellm_params"] = params
         return new_kwargs
 
     def _finish(
@@ -308,6 +369,7 @@ class EnvelopeCollector:
         status: CallStatus,
         error_class: str | None,
         response: Any,
+        provider_hint: Any = None,
     ) -> bool:
         call_id = self.call_id_from(request_data)
         # attempts stay in memory (pruned by age) so a redelivered hook rebuilds the same body
@@ -330,11 +392,14 @@ class EnvelopeCollector:
             )
             started = attempt.started_at_ms
         else:
-            provider = self._provider(request_data)
+            provider = self._provider(request_data, hint=provider_hint)
             api_family = API_FAMILY_BY_PROVIDER.get(provider, ApiFamily.unknown)
             model_requested = _safe_id(request_data.get("model")) or "unknown-model"
-            context = self._context(meta, call_id, 1)
+            context = self._context(meta, request_data, call_id, 1)
             started = None
+        if provider is Provider.other and isinstance(provider_hint, str):
+            provider = PROVIDER_MAP.get(provider_hint.lower(), Provider.other)
+            api_family = API_FAMILY_BY_PROVIDER.get(provider, ApiFamily.unknown)
 
         safe_usage: dict[str, Any] | None = None
         drift: dict[str, int] | None = None
@@ -352,17 +417,20 @@ class EnvelopeCollector:
             provider_request_id = _safe_id(_get(response, "id"))
             hidden = _get(response, "_hidden_params")
             upstream_cost = _safe_decimal(_get(hidden, "response_cost")) if hidden else None
+            hidden_provider = _get(hidden, "custom_llm_provider") if hidden else None
+            if provider is Provider.other and isinstance(hidden_provider, str):
+                provider = PROVIDER_MAP.get(hidden_provider.lower(), Provider.other)
+                api_family = API_FAMILY_BY_PROVIDER.get(provider, ApiFamily.unknown)
         if upstream_cost is None:
             upstream_cost = _safe_decimal(request_data.get("response_cost"))
 
+        stream_flag = request_data.get("stream")
         payload = CallFinishedPayload(
             provider=provider,
             api_family=api_family,
             model_requested=model_requested,
             model_resolved=model_resolved,
-            stream=bool(request_data.get("stream"))
-            if request_data.get("stream") is not None
-            else None,
+            stream=bool(stream_flag) if stream_flag is not None else None,
             status=status,
             error_class=error_class,
             provider_request_id=provider_request_id,
@@ -400,7 +468,13 @@ class EnvelopeCollector:
             status = CallStatus.cancelled
         else:
             status = CallStatus.error
-        return self._finish(request_data, status=status, error_class=error_class, response=None)
+        return self._finish(
+            request_data,
+            status=status,
+            error_class=error_class,
+            response=None,
+            provider_hint=getattr(exception, "llm_provider", None),
+        )
 
     def health(self) -> dict[str, Any]:
         return {
@@ -437,10 +511,10 @@ class AieconLiteLLMLogger(CustomLogger):
         from aiecon.storage import Workspace
 
         try:
-            import litellm
+            from importlib.metadata import version as _dist_version
 
-            version = f"litellm=={getattr(litellm, '__version__', 'unknown')}"
-        except ImportError:  # pragma: no cover
+            version = f"litellm=={_dist_version('litellm')}"
+        except Exception:  # noqa: BLE001 - version is informational only
             version = "litellm==unknown"
         workspace = Workspace(resolve_workspace(None))
         writer = JsonlWriter(workspace.raw_dir)

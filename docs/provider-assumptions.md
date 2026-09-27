@@ -198,9 +198,22 @@ own request kwargs, not shared state carried over from an earlier attempt." Prox
 registration: `litellm_settings: callbacks: custom_callbacks.proxy_handler_instance`.
 `kwargs["standard_logging_object"]["metadata"]` is the documented place for request identity;
 `response_cost` "Cost of the response in USD ($)" is kept only as
-`upstream_cost_estimate_usd`, never as billing. Whether the per-attempt hooks expose a
-per-attempt `litellm_call_id` is `UNVERIFIED` from the docs; aiecon allocates its own
-`call_id` in the pre-call deployment hook and carries it in the per-attempt request data.
+`upstream_cost_estimate_usd`, never as billing.
+
+**Observed hook arguments (probe against LiteLLM 1.102.1 on 2026-09-27, both via
+`Router` and via the proxy):** the pre-call deployment kwargs carry the bare deployment
+`model` (for example `gpt-5-nano`), `max_tokens`, `stream`, `litellm_call_id`,
+`litellm_trace_id`, `api_key`, `messages` and a `metadata` dict with `model_group`,
+`deployment`, `deployment_model_name`, `model_info`, `attempted_retries` and
+`attempted_fallbacks`; there is no `litellm_params` key at this stage. The failure hook
+receives a read-only view of the same kwargs and an exception whose `llm_provider` names the
+provider. aiecon therefore resolves the provider from the model id (explicit prefix, known
+families, then LiteLLM's own `get_llm_provider`), reads `model_group` from `metadata`,
+keeps `litellm_trace_id` / `litellm_call_id` only as opaque correlation ids, allocates its
+own per-attempt `call_id` in the pre-call hook and carries it in a copied `metadata`. It
+never reads `api_key` or `messages`. Verified end to end with placeholder keys: two attempts
+for one node run produced two calls with explicit lineage, `error_class=auth`, and no key or
+prompt text in the JSONL.
 
 ## Live validation status
 
@@ -217,5 +230,6 @@ compared (PLAN.md section 1.1).
 - OpenAI cost/usage report data latency and finalization behaviour.
 - OpenAI "short context" vs "long context" threshold for GPT-6 models (labels say `<272K` for
   gpt-5.5/5.4 only); the live catalog therefore omits gpt-6 models.
-- Whether LiteLLM 1.102.1 per-attempt deployment hooks carry a stable per-attempt id.
 - USD as the OpenAI pricing page currency is implied by `$` figures, not stated in a sentence.
+- The exact LiteLLM-transformed `usage` layout for successful calls (fixtures are written
+  from documentation; the first live run should capture real samples).
