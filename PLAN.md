@@ -1158,7 +1158,9 @@ phase 3.
   128 tests.
 - Gap review: `aiecon-gap-review-dcd9041.md` (external, 2026-09-27); G01 reproduced with the
   real router before fixing (abandoned and consumed streams never received a terminal).
-- v0.1.1 commits and CI run ids are appended here when pushed.
+- v0.1.1 correctness pass: commits a2b8f57 (G01), aa87db7 (G02-G09 code), 88ebcd7 (docs);
+  CI run 36353701233 green on 88ebcd7 (lint/tests/demo/package, live-extra collector paths,
+  secret scan). No v0.1.1 tag or GitHub Release cut yet.
 
 ### 19.5 Open gaps
 
