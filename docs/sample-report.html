@@ -32,6 +32,7 @@
   th { color: var(--muted); font-weight: 600; white-space: nowrap; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   code { font-size: 0.82rem; word-break: break-all; }
+  td code { word-break: normal; white-space: nowrap; }
   .id { word-break: break-all; color: var(--muted); font-size: 0.8rem; }
   .status { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.78rem; border: 1px solid var(--line); }
   .status.matched { color: var(--ok); border-color: var(--ok); }
@@ -50,7 +51,7 @@
 <main>
   <div class="banner">SYNTHETIC DEMO — every number on this page comes from generated fixtures, not from a real account.</div>
   <h1>aiecon cost report</h1>
-  <p class="lead">Dataset <code>demo-support-v1</code> · generated 2026-09-27 08:29:09 UTC · aiecon 0.1.0</p>
+  <p class="lead">Dataset <code>demo-support-v1</code> · generated 2026-09-27 08:34:35 UTC · aiecon 0.1.0</p>
 
   <h2>1. Data identity</h2>
   <div class="tiles">
@@ -74,7 +75,7 @@
     <div class="tile"><div class="k">Cohort known cost</div><div class="v">$1.616110</div>
       <div class="s">313 calls · 5 with unknown cost</div></div>
     <div class="tile"><div class="k">Cost per successful outcome</div><div class="v">$0.017957</div>
-      <div class="s">known-cost lower bound (known-cost lower bound)</div></div>
+      <div class="s">known-cost lower bound · 5 calls with unknown cost</div></div>
     <div class="tile"><div class="k">Successful-runs-only cost per success</div><div class="v">$0.016075</div>
       <div class="s">different label, different denominator basis</div></div>
   </div>

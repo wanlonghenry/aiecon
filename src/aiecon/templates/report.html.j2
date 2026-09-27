@@ -32,6 +32,7 @@
   th { color: var(--muted); font-weight: 600; white-space: nowrap; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   code { font-size: 0.82rem; word-break: break-all; }
+  td code { word-break: normal; white-space: nowrap; }
   .id { word-break: break-all; color: var(--muted); font-size: 0.8rem; }
   .status { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.78rem; border: 1px solid var(--line); }
   .status.matched { color: var(--ok); border-color: var(--ok); }
@@ -76,7 +77,7 @@
     <div class="tile"><div class="k">Cohort known cost</div><div class="v">{{ report.outcome_economics.cohort_known_cost_usd | usd }}</div>
       <div class="s">{{ report.outcome_economics.cohort_call_count | num }} calls · {{ report.outcome_economics.unknown_cost_calls | num }} with unknown cost</div></div>
     <div class="tile"><div class="k">Cost per successful outcome</div><div class="v">{{ report.outcome_economics.cost_per_successful_outcome_usd | usd }}</div>
-      <div class="s">{{ report.outcome_economics.note }}{% if report.outcome_economics.is_lower_bound %} (known-cost lower bound){% endif %}</div></div>
+      <div class="s">{{ report.outcome_economics.note }}{% if report.outcome_economics.is_lower_bound %} · {{ report.outcome_economics.unknown_cost_calls }} calls with unknown cost{% endif %}</div></div>
     <div class="tile"><div class="k">Successful-runs-only cost per success</div><div class="v">{{ report.outcome_economics.successful_runs_only_per_success_usd | usd }}</div>
       <div class="s">different label, different denominator basis</div></div>
   </div>
