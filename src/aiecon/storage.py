@@ -1,4 +1,9 @@
-"""Workspace layout, single-writer lock and DuckDB storage (PLAN.md §3.1, §3.2, §4.5)."""
+"""Workspace layout, single-writer lock and DuckDB storage (PLAN.md §3.1, §3.2, §4.5).
+
+Bulk writes and key lookups pass one JSON document per batch and unnest it inside DuckDB.
+Binding thousands of individual parameters costs about 0.4 ms each in the Python client,
+so a 300-row batch went from seconds to milliseconds with this shape.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +30,7 @@ from aiecon.spec.reconcile import ReconciliationBucket
 DB_FILENAME = "aiecon.duckdb"
 LOCK_FILENAME = "lock"
 MANIFEST_FILENAME = "workspace.json"
+BULK_ROWS = 5000
 
 
 class WorkspaceError(Exception):
@@ -93,7 +99,9 @@ class Workspace:
             created_at_ms=now_ms,
             aiecon_version=aiecon_version,
         )
-        self.manifest_path.write_text(manifest.model_dump_json(indent=2) + "\n", "utf-8")
+        self.manifest_path.write_text(
+            manifest.model_dump_json(indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
         with Storage.open(self.db_path) as storage:
             storage.apply_schema()
             storage.set_meta("workspace_id", manifest.workspace_id)
@@ -140,6 +148,369 @@ def _dec(value: Decimal | None) -> str | None:
     return None if value is None else format(value, "f")
 
 
+def _chunks(items: Sequence[Any], size: int) -> Iterator[Sequence[Any]]:
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
+
+
+# ------------------------------------------------------------ table shapes
+class _Table:
+    """Column list plus the JSON struct types used to unnest a batch."""
+
+    def __init__(
+        self,
+        name: str,
+        columns: Sequence[str],
+        *,
+        bigint: Sequence[str] = (),
+        boolean: Sequence[str] = (),
+        decimal: Sequence[str] = (),
+    ):
+        self.name = name
+        self.columns = list(columns)
+        self.column_sql = ", ".join(self.columns)
+        types = {c: "VARCHAR" for c in self.columns}
+        types.update({c: "BIGINT" for c in bigint})
+        types.update({c: "BOOLEAN" for c in boolean})
+        self.struct_sql = ", ".join(f'"{c}": "{types[c]}"' for c in self.columns)
+        self.select_sql = ", ".join(
+            f"CAST({c} AS DECIMAL(24,12))" if c in decimal else c for c in self.columns
+        )
+
+    def insert_sql(self, *, replace: bool) -> str:
+        verb = "INSERT OR REPLACE" if replace else "INSERT"
+        return (
+            f"{verb} INTO {self.name} ({self.column_sql}) SELECT {self.select_sql} "
+            f"FROM (SELECT unnest(from_json(?::JSON, '[{{{self.struct_sql}}}]'), "
+            f"recursive := true))"
+        )
+
+
+CALLS = _Table(
+    "calls",
+    [
+        "dataset_id",
+        "call_id",
+        "data_kind",
+        "scope_id",
+        "workflow_id",
+        "workflow_run_id",
+        "node_id",
+        "node_run_id",
+        "attempt_index",
+        "retry_of_call_id",
+        "fallback_of_call_id",
+        "provider",
+        "api_family",
+        "model_requested",
+        "model_resolved",
+        "service_tier",
+        "inference_region",
+        "provider_request_id",
+        "started_at_ms",
+        "ended_at_ms",
+        "status",
+        "error_class",
+        "usage_format",
+        "input_total_tokens",
+        "input_uncached_tokens",
+        "input_cache_read_tokens",
+        "input_cache_write_tokens",
+        "output_tokens",
+        "usage_completeness",
+        "upstream_cost_estimate_usd",
+        "prefix_fingerprint",
+        "fingerprint_key_id",
+        "prefix_tokens",
+        "cache_policy",
+        "stream",
+        "revision",
+        "normalizer_version",
+        "doc_json",
+    ],
+    bigint=[
+        "attempt_index",
+        "started_at_ms",
+        "ended_at_ms",
+        "input_total_tokens",
+        "input_uncached_tokens",
+        "input_cache_read_tokens",
+        "input_cache_write_tokens",
+        "output_tokens",
+        "prefix_tokens",
+        "revision",
+    ],
+    boolean=["stream"],
+    decimal=["upstream_cost_estimate_usd"],
+)
+CALL_COLUMNS = CALLS.column_sql
+
+
+def _call_row(call: ModelCall) -> list[Any]:
+    return [
+        call.dataset_id,
+        call.call_id,
+        call.data_kind.value,
+        call.scope_id,
+        call.workflow_id,
+        call.workflow_run_id,
+        call.node_id,
+        call.node_run_id,
+        call.attempt_index,
+        call.retry_of_call_id,
+        call.fallback_of_call_id,
+        call.provider.value,
+        call.api_family.value,
+        call.model_requested,
+        call.model_resolved,
+        call.service_tier,
+        call.inference_region,
+        call.provider_request_id,
+        call.started_at_ms,
+        call.ended_at_ms,
+        call.status.value,
+        call.error_class,
+        call.usage_format.value if call.usage_format else None,
+        call.input_total_tokens,
+        call.input_uncached_tokens,
+        call.input_cache_read_tokens,
+        call.input_cache_write_tokens,
+        call.output_tokens,
+        call.usage_completeness.value,
+        _dec(call.upstream_cost_estimate_usd),
+        call.prefix_fingerprint,
+        call.fingerprint_key_id,
+        call.prefix_tokens,
+        call.cache_policy,
+        call.stream,
+        call.revision,
+        call.normalizer_version,
+        call.model_dump_json(),
+    ]
+
+
+OUTCOMES = _Table(
+    "outcomes",
+    [
+        "dataset_id",
+        "workflow_run_id",
+        "workflow_id",
+        "data_kind",
+        "revision",
+        "terminal_at_ms",
+        "status",
+        "success",
+        "outcome_source",
+        "doc_json",
+    ],
+    bigint=["revision", "terminal_at_ms"],
+    boolean=["success"],
+)
+
+
+def _outcome_row(outcome: Outcome) -> list[Any]:
+    return [
+        outcome.dataset_id,
+        outcome.workflow_run_id,
+        outcome.workflow_id,
+        outcome.data_kind.value,
+        outcome.revision,
+        outcome.terminal_at_ms,
+        outcome.status.value,
+        outcome.success,
+        outcome.outcome_source.value,
+        outcome.model_dump_json(),
+    ]
+
+
+EVENTS = _Table(
+    "meta_events",
+    [
+        "dataset_id",
+        "event_id",
+        "content_hash",
+        "event_type",
+        "revision",
+        "target_id",
+        "source_file",
+        "source_line",
+        "processed_at_ms",
+        "applied",
+    ],
+    bigint=["revision", "source_line", "processed_at_ms"],
+    boolean=["applied"],
+)
+
+LINE_ITEMS = _Table(
+    "cost_line_items",
+    [
+        "dataset_id",
+        "call_id",
+        "resource",
+        "pricing_run_id",
+        "line_item_id",
+        "data_kind",
+        "quantity",
+        "unit",
+        "unit_quantity",
+        "unit_price",
+        "currency",
+        "line_cost",
+        "status",
+        "unpriced_reason",
+        "evidence_class",
+        "catalog_version",
+        "price_id",
+        "boundary_call",
+        "doc_json",
+    ],
+    bigint=["quantity", "unit_quantity"],
+    boolean=["boundary_call"],
+    decimal=["unit_price", "line_cost"],
+)
+
+
+def _line_item_row(item: CostLineItem) -> list[Any]:
+    return [
+        item.dataset_id,
+        item.call_id,
+        item.resource.value,
+        item.pricing_run_id,
+        item.line_item_id,
+        item.data_kind.value,
+        item.quantity,
+        item.unit.value,
+        item.unit_quantity,
+        _dec(item.unit_price),
+        item.currency,
+        _dec(item.line_cost),
+        item.status.value,
+        item.unpriced_reason,
+        item.evidence_class.value,
+        item.catalog_version,
+        item.price_id,
+        item.boundary_call,
+        item.model_dump_json(),
+    ]
+
+
+RECORDS = _Table(
+    "provider_records",
+    [
+        "snapshot_id",
+        "record_id",
+        "provider",
+        "scope_id",
+        "record_kind",
+        "data_kind",
+        "window_start_ms",
+        "window_end_ms",
+        "grain",
+        "dimensions_json",
+        "dim_model",
+        "dim_project",
+        "dim_line_item",
+        "amount_original",
+        "amount_unit",
+        "currency",
+        "amount_usd",
+        "usage_json",
+        "source_ref",
+        "source_hash",
+        "fetched_at_ms",
+        "finality",
+        "snapshot_complete",
+        "doc_json",
+    ],
+    bigint=["window_start_ms", "window_end_ms", "fetched_at_ms"],
+    boolean=["snapshot_complete"],
+    decimal=["amount_original", "amount_usd"],
+)
+
+
+def _record_row(record: ProviderRecord) -> list[Any]:
+    dims = record.dimensions
+    return [
+        record.snapshot_id,
+        record.record_id,
+        record.provider.value,
+        record.scope_id,
+        record.record_kind.value,
+        record.data_kind.value,
+        record.window_start_ms,
+        record.window_end_ms,
+        record.grain,
+        json.dumps(dims, sort_keys=True),
+        dims.get("model"),
+        dims.get("project_id", dims.get("workspace_id")),
+        dims.get("line_item", dims.get("description")),
+        _dec(record.amount_original),
+        record.amount_unit,
+        record.currency,
+        _dec(record.amount_usd),
+        None if record.usage is None else json.dumps(record.usage, sort_keys=True),
+        record.source_ref,
+        record.source_hash,
+        record.fetched_at_ms,
+        record.finality.value,
+        record.snapshot_complete,
+        record.model_dump_json(),
+    ]
+
+
+BUCKETS = _Table(
+    "reconciliation_buckets",
+    [
+        "reconcile_run_id",
+        "bucket_key",
+        "comparison_kind",
+        "dataset_id",
+        "provider",
+        "scope_id",
+        "window_start_ms",
+        "window_end_ms",
+        "grain",
+        "dimensions_json",
+        "local_estimate_usd",
+        "provider_cost_usd",
+        "signed_variance_usd",
+        "variance_pct",
+        "status",
+        "doc_json",
+    ],
+    bigint=["window_start_ms", "window_end_ms"],
+    decimal=["local_estimate_usd", "provider_cost_usd", "signed_variance_usd", "variance_pct"],
+)
+
+
+def _bucket_row(bucket: ReconciliationBucket) -> list[Any]:
+    return [
+        bucket.reconcile_run_id,
+        bucket.bucket_key,
+        bucket.comparison_kind.value,
+        bucket.dataset_id,
+        bucket.provider.value,
+        bucket.scope_id,
+        bucket.window_start_ms,
+        bucket.window_end_ms,
+        bucket.grain,
+        json.dumps(bucket.dimensions, sort_keys=True),
+        _dec(bucket.local_estimate_usd),
+        _dec(bucket.provider_cost_usd),
+        _dec(bucket.signed_variance_usd),
+        _dec(bucket.variance_pct),
+        bucket.status.value,
+        bucket.model_dump_json(),
+    ]
+
+
+def _ids_json(ids: Iterable[str]) -> str:
+    return json.dumps(list(ids))
+
+
+ID_LIST = "(SELECT unnest(from_json(?::JSON, '[\"VARCHAR\"]')))"
+
+
 class Storage:
     """Thin DuckDB wrapper. All writes happen inside :meth:`transaction`."""
 
@@ -184,6 +555,15 @@ class Storage:
         row = self.con.execute(sql, list(params or [])).fetchone()
         return None if row is None else row[0]
 
+    def _bulk(self, table: _Table, rows: Sequence[Sequence[Any]], *, replace: bool) -> int:
+        sql = table.insert_sql(replace=replace)
+        count = 0
+        for chunk in _chunks(rows, BULK_ROWS):
+            payload = json.dumps([dict(zip(table.columns, row, strict=True)) for row in chunk])
+            self.con.execute(sql, [payload])
+            count += len(chunk)
+        return count
+
     # -------------------------------------------------------------------- meta
     def set_meta(self, key: str, value: str) -> None:
         self.con.execute(
@@ -200,6 +580,28 @@ class Storage:
         ).fetchone()
         return None if row is None else (row[0], bool(row[1]))
 
+    def load_event_hashes(self, keys: Sequence[tuple[str, str]]) -> dict[tuple[str, str], str]:
+        """Content hashes for the given (dataset_id, event_id) pairs that already exist."""
+
+        found: dict[tuple[str, str], str] = {}
+        by_dataset: dict[str, list[str]] = {}
+        for dataset_id, event_id in keys:
+            by_dataset.setdefault(dataset_id, []).append(event_id)
+        for dataset_id, event_ids in by_dataset.items():
+            rows = self.query(
+                "SELECT event_id, content_hash FROM meta_events WHERE dataset_id = ? "
+                f"AND event_id IN {ID_LIST}",
+                [dataset_id, _ids_json(event_ids)],
+            )
+            for event_id, content_hash in rows:
+                found[(dataset_id, event_id)] = content_hash
+        return found
+
+    def record_events(self, rows: Sequence[Sequence[Any]]) -> int:
+        """Rows follow the meta_events column order (see EVENTS)."""
+
+        return self._bulk(EVENTS, rows, replace=False)
+
     def record_event(
         self,
         *,
@@ -214,22 +616,21 @@ class Storage:
         processed_at_ms: int,
         applied: bool,
     ) -> None:
-        self.con.execute(
-            "INSERT INTO meta_events (dataset_id, event_id, content_hash, event_type, revision, "
-            "target_id, source_file, source_line, processed_at_ms, applied) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        self.record_events(
             [
-                dataset_id,
-                event_id,
-                content_hash,
-                event_type,
-                revision,
-                target_id,
-                source_file,
-                source_line,
-                processed_at_ms,
-                applied,
-            ],
+                [
+                    dataset_id,
+                    event_id,
+                    content_hash,
+                    event_type,
+                    revision,
+                    target_id,
+                    source_file,
+                    source_line,
+                    processed_at_ms,
+                    applied,
+                ]
+            ]
         )
 
     def file_already_ingested(self, file_path: str, file_sha256: str) -> bool:
@@ -258,8 +659,7 @@ class Storage:
         self.con.execute(
             "INSERT OR REPLACE INTO meta_ingest_files (file_path, file_sha256, dataset_id, "
             "line_count, accepted, duplicates, conflicts, rejected, truncated_tail, "
-            "processed_at_ms) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "processed_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 file_path,
                 file_sha256,
@@ -275,65 +675,32 @@ class Storage:
         )
 
     # ------------------------------------------------------------------- calls
+    def upsert_calls(self, calls: Iterable[ModelCall]) -> int:
+        return self._bulk(CALLS, [_call_row(call) for call in calls], replace=True)
+
     def upsert_call(self, call: ModelCall) -> None:
-        self.con.execute(
-            "INSERT OR REPLACE INTO calls (dataset_id, call_id, data_kind, scope_id, workflow_id, "
-            "workflow_run_id, node_id, node_run_id, attempt_index, retry_of_call_id, "
-            "fallback_of_call_id, provider, api_family, model_requested, model_resolved, "
-            "service_tier, inference_region, provider_request_id, started_at_ms, ended_at_ms, "
-            "status, error_class, usage_format, input_total_tokens, input_uncached_tokens, "
-            "input_cache_read_tokens, input_cache_write_tokens, output_tokens, usage_completeness, "
-            "upstream_cost_estimate_usd, prefix_fingerprint, fingerprint_key_id, prefix_tokens, "
-            "cache_policy, stream, revision, normalizer_version, doc_json) VALUES ("
-            + ", ".join(["?"] * 29)
-            + ", CAST(? AS DECIMAL(24,12)), ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                call.dataset_id,
-                call.call_id,
-                call.data_kind.value,
-                call.scope_id,
-                call.workflow_id,
-                call.workflow_run_id,
-                call.node_id,
-                call.node_run_id,
-                call.attempt_index,
-                call.retry_of_call_id,
-                call.fallback_of_call_id,
-                call.provider.value,
-                call.api_family.value,
-                call.model_requested,
-                call.model_resolved,
-                call.service_tier,
-                call.inference_region,
-                call.provider_request_id,
-                call.started_at_ms,
-                call.ended_at_ms,
-                call.status.value,
-                call.error_class,
-                call.usage_format.value if call.usage_format else None,
-                call.input_total_tokens,
-                call.input_uncached_tokens,
-                call.input_cache_read_tokens,
-                call.input_cache_write_tokens,
-                call.output_tokens,
-                call.usage_completeness.value,
-                _dec(call.upstream_cost_estimate_usd),
-                call.prefix_fingerprint,
-                call.fingerprint_key_id,
-                call.prefix_tokens,
-                call.cache_policy,
-                call.stream,
-                call.revision,
-                call.normalizer_version,
-                call.model_dump_json(),
-            ],
-        )
+        self.upsert_calls([call])
 
     def get_call(self, dataset_id: str, call_id: str) -> ModelCall | None:
         doc = self.scalar(
             "SELECT doc_json FROM calls WHERE dataset_id = ? AND call_id = ?", [dataset_id, call_id]
         )
         return None if doc is None else ModelCall.model_validate_json(doc)
+
+    def get_calls_many(self, keys: Sequence[tuple[str, str]]) -> dict[tuple[str, str], ModelCall]:
+        found: dict[tuple[str, str], ModelCall] = {}
+        by_dataset: dict[str, list[str]] = {}
+        for dataset_id, call_id in keys:
+            by_dataset.setdefault(dataset_id, []).append(call_id)
+        for dataset_id, call_ids in by_dataset.items():
+            rows = self.query(
+                "SELECT call_id, doc_json FROM calls WHERE dataset_id = ? "
+                f"AND call_id IN {ID_LIST}",
+                [dataset_id, _ids_json(call_ids)],
+            )
+            for call_id, doc in rows:
+                found[(dataset_id, call_id)] = ModelCall.model_validate_json(doc)
+        return found
 
     def list_calls(self, dataset_id: str) -> list[ModelCall]:
         rows = self.query(
@@ -346,24 +713,11 @@ class Storage:
         return int(self.scalar("SELECT COUNT(*) FROM calls WHERE dataset_id = ?", [dataset_id]))
 
     # ---------------------------------------------------------------- outcomes
+    def upsert_outcomes(self, outcomes: Iterable[Outcome]) -> int:
+        return self._bulk(OUTCOMES, [_outcome_row(o) for o in outcomes], replace=True)
+
     def upsert_outcome(self, outcome: Outcome) -> None:
-        self.con.execute(
-            "INSERT OR REPLACE INTO outcomes (dataset_id, workflow_run_id, workflow_id, data_kind, "
-            "revision, terminal_at_ms, status, success, outcome_source, doc_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                outcome.dataset_id,
-                outcome.workflow_run_id,
-                outcome.workflow_id,
-                outcome.data_kind.value,
-                outcome.revision,
-                outcome.terminal_at_ms,
-                outcome.status.value,
-                outcome.success,
-                outcome.outcome_source.value,
-                outcome.model_dump_json(),
-            ],
-        )
+        self.upsert_outcomes([outcome])
 
     def get_outcome(self, dataset_id: str, workflow_run_id: str) -> Outcome | None:
         doc = self.scalar(
@@ -371,6 +725,21 @@ class Storage:
             [dataset_id, workflow_run_id],
         )
         return None if doc is None else Outcome.model_validate_json(doc)
+
+    def get_outcomes_many(self, keys: Sequence[tuple[str, str]]) -> dict[tuple[str, str], Outcome]:
+        found: dict[tuple[str, str], Outcome] = {}
+        by_dataset: dict[str, list[str]] = {}
+        for dataset_id, run_id in keys:
+            by_dataset.setdefault(dataset_id, []).append(run_id)
+        for dataset_id, run_ids in by_dataset.items():
+            rows = self.query(
+                "SELECT workflow_run_id, doc_json FROM outcomes WHERE dataset_id = ? "
+                f"AND workflow_run_id IN {ID_LIST}",
+                [dataset_id, _ids_json(run_ids)],
+            )
+            for run_id, doc in rows:
+                found[(dataset_id, run_id)] = Outcome.model_validate_json(doc)
+        return found
 
     def list_outcomes(self, dataset_id: str) -> list[Outcome]:
         rows = self.query(
@@ -392,38 +761,7 @@ class Storage:
     # -------------------------------------------------------------- line items
     def replace_line_items(self, pricing_run_id: str, items: Iterable[CostLineItem]) -> int:
         self.con.execute("DELETE FROM cost_line_items WHERE pricing_run_id = ?", [pricing_run_id])
-        count = 0
-        for item in items:
-            self.con.execute(
-                "INSERT INTO cost_line_items (dataset_id, call_id, resource, pricing_run_id, "
-                "line_item_id, data_kind, quantity, unit, unit_quantity, unit_price, currency, "
-                "line_cost, status, unpriced_reason, evidence_class, catalog_version, price_id, "
-                "boundary_call, doc_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                "CAST(? AS DECIMAL(24,12)), ?, CAST(? AS DECIMAL(24,12)), ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    item.dataset_id,
-                    item.call_id,
-                    item.resource.value,
-                    item.pricing_run_id,
-                    item.line_item_id,
-                    item.data_kind.value,
-                    item.quantity,
-                    item.unit.value,
-                    item.unit_quantity,
-                    _dec(item.unit_price),
-                    item.currency,
-                    _dec(item.line_cost),
-                    item.status.value,
-                    item.unpriced_reason,
-                    item.evidence_class.value,
-                    item.catalog_version,
-                    item.price_id,
-                    item.boundary_call,
-                    item.model_dump_json(),
-                ],
-            )
-            count += 1
-        return count
+        return self._bulk(LINE_ITEMS, [_line_item_row(i) for i in items], replace=False)
 
     def list_line_items(self, pricing_run_id: str) -> list[CostLineItem]:
         rows = self.query(
@@ -451,8 +789,7 @@ class Storage:
             )
         self.con.execute(
             "INSERT OR REPLACE INTO meta_runs (run_id, run_kind, dataset_id, created_at_ms, "
-            "active, "
-            "manifest_json) VALUES (?, ?, ?, ?, ?, ?)",
+            "active, manifest_json) VALUES (?, ?, ?, ?, ?, ?)",
             [run_id, run_kind, dataset_id, created_at_ms, activate, manifest_json],
         )
 
@@ -482,7 +819,7 @@ class Storage:
         rows = self.query(
             "SELECT snapshot_id FROM meta_snapshots WHERE provider = ? AND scope_id = ? AND "
             "record_kind = ? AND grain = ? AND data_kind = ? AND active AND "
-            "window_start_ms < ? AND window_end_ms > ?",
+            "window_start_ms < ? AND window_end_ms > ? AND snapshot_id <> ?",
             [
                 manifest.provider.value,
                 manifest.scope_id,
@@ -491,6 +828,7 @@ class Storage:
                 manifest.data_kind.value,
                 manifest.query_window.end_ms,
                 manifest.query_window.start_ms,
+                manifest.snapshot_id,
             ],
         )
         deactivated = [row[0] for row in rows]
@@ -501,48 +839,11 @@ class Storage:
         self.con.execute(
             "DELETE FROM provider_records WHERE snapshot_id = ?", [manifest.snapshot_id]
         )
-        count = 0
-        for record in records:
-            self.con.execute(
-                "INSERT INTO provider_records (snapshot_id, record_id, provider, scope_id, "
-                "record_kind, data_kind, window_start_ms, window_end_ms, grain, dimensions_json, "
-                "dim_model, dim_project, dim_line_item, amount_original, amount_unit, currency, "
-                "amount_usd, usage_json, source_ref, source_hash, fetched_at_ms, finality, "
-                "snapshot_complete, doc_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                "CAST(? AS DECIMAL(24,12)), ?, ?, CAST(? AS DECIMAL(24,12)), ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    record.snapshot_id,
-                    record.record_id,
-                    record.provider.value,
-                    record.scope_id,
-                    record.record_kind.value,
-                    record.data_kind.value,
-                    record.window_start_ms,
-                    record.window_end_ms,
-                    record.grain,
-                    json.dumps(record.dimensions, sort_keys=True),
-                    record.dimensions.get("model"),
-                    record.dimensions.get("project_id", record.dimensions.get("workspace_id")),
-                    record.dimensions.get("line_item", record.dimensions.get("description")),
-                    _dec(record.amount_original),
-                    record.amount_unit,
-                    record.currency,
-                    _dec(record.amount_usd),
-                    None if record.usage is None else json.dumps(record.usage, sort_keys=True),
-                    record.source_ref,
-                    record.source_hash,
-                    record.fetched_at_ms,
-                    record.finality.value,
-                    record.snapshot_complete,
-                    record.model_dump_json(),
-                ],
-            )
-            count += 1
+        count = self._bulk(RECORDS, [_record_row(r) for r in records], replace=False)
         self.con.execute(
             "INSERT OR REPLACE INTO meta_snapshots (snapshot_id, provider, scope_id, record_kind, "
             "data_kind, grain, window_start_ms, window_end_ms, fetched_at_ms, source_hash, "
-            "finality, "
-            "snapshot_complete, active, record_count, manifest_json) "
+            "finality, snapshot_complete, active, record_count, manifest_json) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)",
             [
                 manifest.snapshot_id,
@@ -588,37 +889,7 @@ class Storage:
         self.con.execute(
             "DELETE FROM reconciliation_buckets WHERE reconcile_run_id = ?", [reconcile_run_id]
         )
-        count = 0
-        for bucket in buckets:
-            self.con.execute(
-                "INSERT INTO reconciliation_buckets (reconcile_run_id, bucket_key, "
-                "comparison_kind, "
-                "dataset_id, provider, scope_id, window_start_ms, window_end_ms, grain, "
-                "dimensions_json, local_estimate_usd, provider_cost_usd, signed_variance_usd, "
-                "variance_pct, status, doc_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                "CAST(? AS DECIMAL(24,12)), CAST(? AS DECIMAL(24,12)), CAST(? AS DECIMAL(24,12)), "
-                "CAST(? AS DECIMAL(24,12)), ?, ?)",
-                [
-                    bucket.reconcile_run_id,
-                    bucket.bucket_key,
-                    bucket.comparison_kind.value,
-                    bucket.dataset_id,
-                    bucket.provider.value,
-                    bucket.scope_id,
-                    bucket.window_start_ms,
-                    bucket.window_end_ms,
-                    bucket.grain,
-                    json.dumps(bucket.dimensions, sort_keys=True),
-                    _dec(bucket.local_estimate_usd),
-                    _dec(bucket.provider_cost_usd),
-                    _dec(bucket.signed_variance_usd),
-                    _dec(bucket.variance_pct),
-                    bucket.status.value,
-                    bucket.model_dump_json(),
-                ],
-            )
-            count += 1
-        return count
+        return self._bulk(BUCKETS, [_bucket_row(b) for b in buckets], replace=False)
 
     def list_buckets(self, reconcile_run_id: str) -> list[ReconciliationBucket]:
         rows = self.query(

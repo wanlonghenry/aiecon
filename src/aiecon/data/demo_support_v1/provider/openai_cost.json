@@ -1,0 +1,100 @@
+{
+  "records": [
+    {
+      "amount_original": "0.167428",
+      "amount_unit": "usd",
+      "currency": "USD",
+      "dimensions_json": {
+        "line_item": "fixture-openai-v1, input_tokens",
+        "project_id": "demo_scope_openai"
+      },
+      "record_id": "cost_openai_2026-09-26_fixture-openai-v1_input_tokens",
+      "usage_json": {
+        "quantity": 83714,
+        "quantity_unit": "tokens"
+      },
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": "0.022",
+      "amount_unit": "usd",
+      "currency": "USD",
+      "dimensions_json": {
+        "line_item": "fixture-openai-v1, input_cached_tokens",
+        "project_id": "demo_scope_openai"
+      },
+      "record_id": "cost_openai_2026-09-26_fixture-openai-v1_input_cached_tokens",
+      "usage_json": {
+        "quantity": 44000,
+        "quantity_unit": "tokens"
+      },
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": "0.130976",
+      "amount_unit": "usd",
+      "currency": "USD",
+      "dimensions_json": {
+        "line_item": "fixture-openai-v1, output_tokens",
+        "project_id": "demo_scope_openai"
+      },
+      "record_id": "cost_openai_2026-09-26_fixture-openai-v1_output_tokens",
+      "usage_json": {
+        "quantity": 16372,
+        "quantity_unit": "tokens"
+      },
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": "0.1417",
+      "amount_unit": "usd",
+      "currency": "USD",
+      "dimensions_json": {
+        "line_item": "fixture-openai-v1, input_tokens",
+        "project_id": "demo_scope_openai"
+      },
+      "record_id": "cost_openai_2026-09-27_fixture-openai-v1_input_tokens",
+      "usage_json": {
+        "quantity": 70850,
+        "quantity_unit": "tokens"
+      },
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    },
+    {
+      "amount_original": "0.018",
+      "amount_unit": "usd",
+      "currency": "USD",
+      "dimensions_json": {
+        "line_item": "fixture-openai-v1, input_cached_tokens",
+        "project_id": "demo_scope_openai"
+      },
+      "record_id": "cost_openai_2026-09-27_fixture-openai-v1_input_cached_tokens",
+      "usage_json": {
+        "quantity": 36000,
+        "quantity_unit": "tokens"
+      },
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    },
+    {
+      "amount_original": "0.110776",
+      "amount_unit": "usd",
+      "currency": "USD",
+      "dimensions_json": {
+        "line_item": "fixture-openai-v1, output_tokens",
+        "project_id": "demo_scope_openai"
+      },
+      "record_id": "cost_openai_2026-09-27_fixture-openai-v1_output_tokens",
+      "usage_json": {
+        "quantity": 13847,
+        "quantity_unit": "tokens"
+      },
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    }
+  ]
+}

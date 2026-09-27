@@ -1,0 +1,46 @@
+{
+  "records": [
+    {
+      "amount_original": null,
+      "amount_unit": null,
+      "currency": null,
+      "dimensions_json": {
+        "model": "fixture-anthropic-v1",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "usage_anthropic_2026-09-26_fixture-anthropic-v1",
+      "usage_json": {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 2500
+        },
+        "cache_read_input_tokens": 35000,
+        "output_tokens": 25625,
+        "uncached_input_tokens": 166750
+      },
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": null,
+      "amount_unit": null,
+      "currency": null,
+      "dimensions_json": {
+        "model": "fixture-anthropic-v1",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "usage_anthropic_2026-09-27_fixture-anthropic-v1",
+      "usage_json": {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_read_input_tokens": 40000,
+        "output_tokens": 21072,
+        "uncached_input_tokens": 140802
+      },
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    }
+  ]
+}

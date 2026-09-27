@@ -14,6 +14,9 @@ Rules implemented:
   number and error type only, never echoed
 * an envelope whose ``data_kind`` differs from the workspace is rejected, so synthetic and
   live records never share a database
+
+One file is one transaction. Events are merged in memory against the committed projection
+and written back in bulk, so ingest cost is linear in the number of events.
 """
 
 from __future__ import annotations
@@ -228,15 +231,12 @@ def apply_call_event(
         return incoming, "created" if incoming.status is CallStatus.in_flight else "finished"
 
     if envelope.event_type is EventType.call_started:
-        # never regress a terminal projection; only fill gaps
         update = _fill_missing(existing, incoming, _START_FIELDS)
         merged = _with_provenance(existing, incoming, update)
-        return (
-            merged,
-            "merged_start" if existing.status is CallStatus.in_flight else "no_regression",
-        )
+        if existing.status is CallStatus.in_flight:
+            return merged, "merged_start"
+        return merged, "no_regression"
 
-    # call_finished
     if existing.status is CallStatus.in_flight:
         update = _fill_missing(incoming, existing, _START_FIELDS)
         return _with_provenance(incoming, existing, update), "finished"
@@ -294,6 +294,9 @@ def apply_outcome_event(
 
 
 # ----------------------------------------------------------------------- ingest
+_NOT_APPLIED = {"conflict", "superseded", "repeated_terminal"}
+
+
 def ingest_file(
     storage: Storage,
     path: Path,
@@ -309,82 +312,109 @@ def ingest_file(
         stats.files.append(result)
         return result
 
+    # pass 1: parse and validate every line; nothing touches the database yet
+    parsed: list[tuple[int, RawEnvelope]] = []
+    for line_no, raw, tail in iter_jsonl_lines(path):
+        if tail:
+            result.truncated_tail = True
+            break
+        result.line_count += 1
+        if not raw.strip():
+            continue
+        try:
+            obj = _parse_json(raw)
+        except (UnicodeDecodeError, ValueError):
+            result.rejected += 1
+            result.rejected_lines.append((line_no, "json_decode_error"))
+            continue
+        try:
+            envelope = RawEnvelope.model_validate(obj)
+        except ValidationError as exc:
+            result.rejected += 1
+            result.rejected_lines.append((line_no, safe_error_summary(exc)))
+            continue
+        if workspace_data_kind is not None and envelope.data_kind is not workspace_data_kind:
+            result.rejected += 1
+            result.rejected_lines.append((line_no, "data_kind_mismatch"))
+            continue
+        parsed.append((line_no, envelope))
+
+    # pass 2: load the committed state this file touches
+    known = storage.load_event_hashes([(e.dataset_id, e.event_id) for _, e in parsed])
+    call_keys = [
+        (e.dataset_id, e.target_id) for _, e in parsed if e.event_type is not EventType.outcome
+    ]
+    outcome_keys = [
+        (e.dataset_id, e.target_id) for _, e in parsed if e.event_type is EventType.outcome
+    ]
+    calls = storage.get_calls_many(list(dict.fromkeys(call_keys)))
+    outcomes = storage.get_outcomes_many(list(dict.fromkeys(outcome_keys)))
+    dirty_calls: dict[tuple[str, str], ModelCall] = {}
+    dirty_outcomes: dict[tuple[str, str], Outcome] = {}
+    event_rows: list[list[Any]] = []
     dataset_seen: str | None = None
-    with storage.transaction():
-        for line_no, raw, tail in iter_jsonl_lines(path):
-            result.line_count += 1
-            if tail:
-                result.truncated_tail = True
-                result.line_count -= 1
-                break
-            if not raw.strip():
-                continue
-            try:
-                obj = _parse_json(raw)
-            except (UnicodeDecodeError, ValueError):
-                result.rejected += 1
-                result.rejected_lines.append((line_no, "json_decode_error"))
-                continue
-            try:
-                envelope = RawEnvelope.model_validate(obj)
-            except ValidationError as exc:
-                result.rejected += 1
-                result.rejected_lines.append((line_no, safe_error_summary(exc)))
-                continue
-            if workspace_data_kind is not None and envelope.data_kind is not workspace_data_kind:
-                result.rejected += 1
-                result.rejected_lines.append((line_no, "data_kind_mismatch"))
-                continue
 
-            dataset_seen = envelope.dataset_id
-            stats.datasets.add(envelope.dataset_id)
-            content_hash = envelope.content_hash()
-            seen = storage.get_event(envelope.dataset_id, envelope.event_id)
-            if seen is not None:
-                if seen[0] == content_hash:
-                    result.duplicates += 1
-                else:
-                    result.conflicts += 1
-                    result.conflict_event_ids.append(envelope.event_id)
-                continue
-
-            if envelope.event_type is EventType.outcome:
-                existing_outcome = storage.get_outcome(envelope.dataset_id, envelope.target_id)
-                projection, action = apply_outcome_event(existing_outcome, envelope)
-                if projection is not None:
-                    storage.upsert_outcome(projection)
+    # pass 3: merge in memory
+    for line_no, envelope in parsed:
+        dataset_seen = envelope.dataset_id
+        stats.datasets.add(envelope.dataset_id)
+        key = (envelope.dataset_id, envelope.event_id)
+        content_hash = envelope.content_hash()
+        seen_hash = known.get(key)
+        if seen_hash is not None:
+            if seen_hash == content_hash:
+                result.duplicates += 1
             else:
-                existing_call = storage.get_call(envelope.dataset_id, envelope.target_id)
-                projection, action = apply_call_event(existing_call, envelope)
-                if projection is not None:
-                    storage.upsert_call(projection)
-
-            if action == "conflict":
                 result.conflicts += 1
                 result.conflict_event_ids.append(envelope.event_id)
-                applied = False
-            elif action == "superseded":
-                result.superseded += 1
-                applied = False
-            elif action == "repeated_terminal":
-                result.repeated_terminal += 1
-                applied = False
-            else:
-                result.accepted += 1
-                applied = True
-            stats.by_event_type[envelope.event_type.value] += 1
-            storage.record_event(
-                dataset_id=envelope.dataset_id,
-                event_id=envelope.event_id,
-                content_hash=content_hash,
-                event_type=envelope.event_type.value,
-                revision=envelope.revision,
-                target_id=envelope.target_id,
-                source_file=path.name,
-                source_line=line_no,
-                processed_at_ms=now_ms,
-                applied=applied,
-            )
+            continue
+        known[key] = content_hash
+
+        target = (envelope.dataset_id, envelope.target_id)
+        if envelope.event_type is EventType.outcome:
+            existing_outcome = dirty_outcomes.get(target) or outcomes.get(target)
+            projection, action = apply_outcome_event(existing_outcome, envelope)
+            if projection is not None:
+                dirty_outcomes[target] = projection
+        else:
+            existing_call = dirty_calls.get(target) or calls.get(target)
+            projection, action = apply_call_event(existing_call, envelope)
+            if projection is not None:
+                dirty_calls[target] = projection
+
+        if action == "conflict":
+            result.conflicts += 1
+            result.conflict_event_ids.append(envelope.event_id)
+        elif action == "superseded":
+            result.superseded += 1
+        elif action == "repeated_terminal":
+            result.repeated_terminal += 1
+        else:
+            result.accepted += 1
+        stats.by_event_type[envelope.event_type.value] += 1
+        event_rows.append(
+            [
+                envelope.dataset_id,
+                envelope.event_id,
+                content_hash,
+                envelope.event_type.value,
+                envelope.revision,
+                envelope.target_id,
+                path.name,
+                line_no,
+                now_ms,
+                action not in _NOT_APPLIED,
+            ]
+        )
+
+    # pass 4: one transaction, bulk writes
+    with storage.transaction():
+        if dirty_calls:
+            storage.upsert_calls(dirty_calls.values())
+        if dirty_outcomes:
+            storage.upsert_outcomes(dirty_outcomes.values())
+        if event_rows:
+            storage.record_events(event_rows)
         storage.record_ingest_file(
             file_path=str(path),
             file_sha256=sha,

@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.duckdb binary
+*.png binary
+*.jsonl text eol=lf

@@ -1,0 +1,22 @@
+{
+  "currency": "USD",
+  "data_kind": "synthetic",
+  "fetched_at_ms": 1790488800000,
+  "finality": "provisional",
+  "grain": "1d/model,project_id",
+  "notes": "Synthetic fixture. Structure mimics the provider report; amounts are artificial.",
+  "provider": "openai",
+  "query_window": {
+    "end_ms": 1790553600000,
+    "start_ms": 1790380800000
+  },
+  "record_count": 2,
+  "record_kind": "provider_usage",
+  "schema_version": "0.1",
+  "scope_id": "demo_scope_openai",
+  "snapshot_complete": true,
+  "snapshot_id": "snap_demo-support-v1_openai_usage",
+  "source_hash": "f023d90537941cb370d7d219d1d2e1bba6b7855d1432fa66216ea5a413ab2915",
+  "source_ref": "synthetic://demo-support-v1/openai/usage",
+  "source_type": "file_import"
+}

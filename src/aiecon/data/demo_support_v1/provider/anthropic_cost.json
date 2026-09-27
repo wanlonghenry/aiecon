@@ -1,0 +1,132 @@
+{
+  "records": [
+    {
+      "amount_original": "33.3500",
+      "amount_unit": "cents",
+      "currency": "USD",
+      "dimensions_json": {
+        "cost_type": "tokens",
+        "description": "Fixture Anthropic Usage - Input Tokens",
+        "model": "fixture-anthropic-v1",
+        "token_type": "uncached_input_tokens",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "cost_anthropic_2026-09-26_uncached_input_tokens",
+      "usage_json": null,
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": "1.7500",
+      "amount_unit": "cents",
+      "currency": "USD",
+      "dimensions_json": {
+        "cost_type": "tokens",
+        "description": "Fixture Anthropic Usage - Cache Read Input Tokens",
+        "model": "fixture-anthropic-v1",
+        "token_type": "cache_read_input_tokens",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "cost_anthropic_2026-09-26_cache_read_input_tokens",
+      "usage_json": null,
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": "0.62500",
+      "amount_unit": "cents",
+      "currency": "USD",
+      "dimensions_json": {
+        "cost_type": "tokens",
+        "description": "Fixture Anthropic Usage - Cache Write 5m Input Tokens",
+        "model": "fixture-anthropic-v1",
+        "token_type": "cache_creation.ephemeral_5m_input_tokens",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "cost_anthropic_2026-09-26_cache_creation.ephemeral_5m_input_tokens",
+      "usage_json": null,
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": "20.500",
+      "amount_unit": "cents",
+      "currency": "USD",
+      "dimensions_json": {
+        "cost_type": "tokens",
+        "description": "Fixture Anthropic Usage - Output Tokens",
+        "model": "fixture-anthropic-v1",
+        "token_type": "output_tokens",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "cost_anthropic_2026-09-26_output_tokens",
+      "usage_json": null,
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": "28.160400",
+      "amount_unit": "cents",
+      "currency": "USD",
+      "dimensions_json": {
+        "cost_type": "tokens",
+        "description": "Fixture Anthropic Usage - Input Tokens",
+        "model": "fixture-anthropic-v1",
+        "token_type": "uncached_input_tokens",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "cost_anthropic_2026-09-27_uncached_input_tokens",
+      "usage_json": null,
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    },
+    {
+      "amount_original": "2.00",
+      "amount_unit": "cents",
+      "currency": "USD",
+      "dimensions_json": {
+        "cost_type": "tokens",
+        "description": "Fixture Anthropic Usage - Cache Read Input Tokens",
+        "model": "fixture-anthropic-v1",
+        "token_type": "cache_read_input_tokens",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "cost_anthropic_2026-09-27_cache_read_input_tokens",
+      "usage_json": null,
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    },
+    {
+      "amount_original": "0.0",
+      "amount_unit": "cents",
+      "currency": "USD",
+      "dimensions_json": {
+        "cost_type": "tokens",
+        "description": "Fixture Anthropic Usage - Cache Write 5m Input Tokens",
+        "model": "fixture-anthropic-v1",
+        "token_type": "cache_creation.ephemeral_5m_input_tokens",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "cost_anthropic_2026-09-27_cache_creation.ephemeral_5m_input_tokens",
+      "usage_json": null,
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    },
+    {
+      "amount_original": "18.227600",
+      "amount_unit": "cents",
+      "currency": "USD",
+      "dimensions_json": {
+        "cost_type": "tokens",
+        "description": "Fixture Anthropic Usage - Output Tokens",
+        "model": "fixture-anthropic-v1",
+        "token_type": "output_tokens",
+        "workspace_id": "demo_scope_anthropic"
+      },
+      "record_id": "cost_anthropic_2026-09-27_output_tokens",
+      "usage_json": null,
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "boundary_calls": 1,
+  "call_events": 626,
+  "calls": 313,
+  "calls_with_missing_usage": 5,
+  "catalog_version": "synthetic-0.1",
+  "context_economics": {
+    "group_a_uncached_repeat": {
+      "appearances": 43,
+      "break_even_reuses": 2,
+      "calls_with_usage": 42,
+      "ephemeral_5m": {
+        "cache_cost_usd": "0.0690",
+        "no_cache_cost_usd": "0.252",
+        "savings_usd": "0.1830"
+      },
+      "expected_recommendation": "beneficial",
+      "prefix_tokens": 3000
+    },
+    "group_b_already_cached": {
+      "appearances": 32,
+      "calls_with_usage": 31,
+      "expected_recommendation": "already_cached",
+      "observed_cache_read_tokens": 75000,
+      "observed_cache_write_tokens": 2500
+    },
+    "group_c_cross_ttl": {
+      "appearances": 6,
+      "calls_with_usage": 5,
+      "ephemeral_1h": {
+        "cache_cost_usd": "0.018",
+        "no_cache_cost_usd": "0.03",
+        "savings_usd": "0.012"
+      },
+      "ephemeral_5m": {
+        "cache_cost_usd": "0.0375",
+        "no_cache_cost_usd": "0.03",
+        "savings_usd": "-0.0075"
+      },
+      "expected_policy": "ephemeral_1h",
+      "expected_recommendation": "beneficial",
+      "prefix_tokens": 3000
+    },
+    "group_d_single_call": {
+      "appearances": 1,
+      "calls_with_usage": 1,
+      "ephemeral_5m": {
+        "cache_cost_usd": "0.00375",
+        "no_cache_cost_usd": "0.003",
+        "savings_usd": "-0.00075"
+      },
+      "expected_recommendation": "not_beneficial",
+      "prefix_tokens": 1500
+    },
+    "reasoning_calls_without_prefix_evidence": 26
+  },
+  "cost_per_successful_outcome_is_lower_bound": true,
+  "cost_per_successful_outcome_usd": "0.017956777778",
+  "dataset_id": "demo-support-v1",
+  "estimated_cost_by_provider_day_usd": {
+    "anthropic/2026-09-26": "0.555050",
+    "anthropic/2026-09-27": "0.470180",
+    "openai/2026-09-26": "0.320404",
+    "openai/2026-09-27": "0.270476"
+  },
+  "estimated_known_cost_usd": "1.616110",
+  "failed_runs": 10,
+  "fallback_runs": 5,
+  "outcome_events": 100,
+  "phantom_call_cost_usd": "0.0072",
+  "provider_cost_usd": {
+    "anthropic": {
+      "2026-09-26": "0.56225",
+      "2026-09-27": "0.483880"
+    },
+    "openai": {
+      "2026-09-26": "0.320404",
+      "2026-09-27": "0.270476"
+    }
+  },
+  "retry_runs": 8,
+  "runs": 100,
+  "seed": 20260926,
+  "source_version": "synthetic-generator-0.1",
+  "succeeded_runs": 90,
+  "tokens": {
+    "anthropic": {
+      "input_cache_read": 75000,
+      "input_cache_write_5m": 2500,
+      "input_uncached": 305552,
+      "output": 46297
+    },
+    "openai": {
+      "input_cache_read": 80000,
+      "input_uncached": 154564,
+      "output": 30219
+    }
+  },
+  "unexplained_residue_usd": "0.0137",
+  "waste": {
+    "discarded_paid_attempts": 8,
+    "discarded_paid_cost_usd": "0.060926",
+    "failed_run_known_cost_usd": "0.169332",
+    "failed_run_unknown_cost_calls": 0,
+    "unique_flagged_cost_usd": "0.215890"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "records": [
+    {
+      "amount_original": null,
+      "amount_unit": null,
+      "currency": null,
+      "dimensions_json": {
+        "model": "fixture-openai-v1",
+        "project_id": "demo_scope_openai"
+      },
+      "record_id": "usage_openai_2026-09-26_fixture-openai-v1",
+      "usage_json": {
+        "input_cache_write_tokens": 0,
+        "input_cached_tokens": 44000,
+        "input_tokens": 127714,
+        "input_uncached_tokens": 83714,
+        "num_model_requests": 108,
+        "output_tokens": 16372
+      },
+      "window_end_ms": 1790467200000,
+      "window_start_ms": 1790380800000
+    },
+    {
+      "amount_original": null,
+      "amount_unit": null,
+      "currency": null,
+      "dimensions_json": {
+        "model": "fixture-openai-v1",
+        "project_id": "demo_scope_openai"
+      },
+      "record_id": "usage_openai_2026-09-27_fixture-openai-v1",
+      "usage_json": {
+        "input_cache_write_tokens": 0,
+        "input_cached_tokens": 36000,
+        "input_tokens": 106850,
+        "input_uncached_tokens": 70850,
+        "num_model_requests": 90,
+        "output_tokens": 13847
+      },
+      "window_end_ms": 1790553600000,
+      "window_start_ms": 1790467200000
+    }
+  ]
+}

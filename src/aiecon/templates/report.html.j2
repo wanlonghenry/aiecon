@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aiecon report</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1b1b1b; --bg: #ffffff; --muted: #5f6368; --line: #d9dde3;
+          --banner: #7a4b00; --banner-bg: #fff4d6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e8e8e8; --bg: #121417; --muted: #a0a6ad; --line: #2b3038; --banner: #ffd479; --banner-bg: #3a2a00; }
+  }
+  body { margin: 0; padding: 0 16px 48px; font: 15px/1.45 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+  main { max-width: 1100px; margin: 0 auto; }
+  .banner { margin: 16px 0; padding: 10px 14px; border: 1px solid var(--banner); background: var(--banner-bg);
+            color: var(--banner); font-weight: 600; border-radius: 6px; }
+  code { word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+  {% if report.identity.data_kind == "synthetic" %}
+  <div class="banner">SYNTHETIC DEMO — every number on this page comes from generated fixtures, not from a real account.</div>
+  {% endif %}
+  <h1>aiecon report</h1>
+  <p>Report rendering lands with task T5.1. Dataset: <code>{{ report.identity.dataset_id }}</code>.</p>
+</main>
+</body>
+</html>

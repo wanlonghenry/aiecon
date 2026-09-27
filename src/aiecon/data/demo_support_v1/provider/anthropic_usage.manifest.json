@@ -1,0 +1,22 @@
+{
+  "currency": "USD",
+  "data_kind": "synthetic",
+  "fetched_at_ms": 1790488800000,
+  "finality": "provisional",
+  "grain": "1d/model,workspace_id",
+  "notes": "Synthetic fixture. Structure mimics the provider report; amounts are artificial.",
+  "provider": "anthropic",
+  "query_window": {
+    "end_ms": 1790553600000,
+    "start_ms": 1790380800000
+  },
+  "record_count": 2,
+  "record_kind": "provider_usage",
+  "schema_version": "0.1",
+  "scope_id": "demo_scope_anthropic",
+  "snapshot_complete": true,
+  "snapshot_id": "snap_demo-support-v1_anthropic_usage",
+  "source_hash": "271a2fe8ba07265a0c59fc972bc687e3fe6d5650bb159a13044dc0ae39423ca7",
+  "source_ref": "synthetic://demo-support-v1/anthropic/usage",
+  "source_type": "file_import"
+}
