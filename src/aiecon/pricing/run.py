@@ -84,4 +84,13 @@ def run_pricing(
             manifest_json=manifest.model_dump_json(),
             activate=True,
         )
+        # keep the exact catalog so later analysis (context economics, report) can reload it
+        storage.set_meta(f"catalog:{run_id}", catalog.model_dump_json())
     return PricingRunResult(manifest=manifest, line_items=items, replaced_existing=replaced)
+
+
+def load_run_catalog(storage: Storage, pricing_run_id: str) -> PriceCatalog | None:
+    """The catalog document persisted with a pricing run, if any."""
+
+    text = storage.get_meta(f"catalog:{pricing_run_id}")
+    return None if text is None else PriceCatalog.model_validate_json(text)
