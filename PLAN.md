@@ -812,7 +812,7 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
 | T7.1 | done | README (section 15.1 order), docs/architecture.md, integration, schema, pricing, provider-assumptions, demo-script, KNOWN_LIMITATIONS; every documented command is exercised by tests except billing sync live |
-| T7.2 | blocked | needs one interactive GitHub login (gh auth login or the GCM browser sign-in): gh has no auth and Git Credential Manager opens a dialog on push; after login: push main, wait for CI, tag v0.1.0 on the green commit, gh release create with scratchpad/release-notes-v0.1.0.md |
+| T7.2 | done | public repo github.com/wanlonghenry/aiecon; CI run 36347060825 green on 3502022; tag v0.1.0 on that commit; GitHub Release with wheel, sdist, sample report; fresh clone from GitHub: demo 313/100 and 128 tests pass |
 
 Day 7 不新增功能。有空余时间只补充真实对账覆盖、修复已发现错误、改进 demo 易用性。
 
