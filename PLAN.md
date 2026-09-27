@@ -804,7 +804,7 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
 | T6.1 | done | 128 tests: V01-V30 covered by unit/integration/e2e tests incl. CLI chain, exit codes 2/3, workload dry-run subprocess offline |
-| T6.2 | done | ci.yml pinned (checkout v7.0.1, setup-uv v10.2.0, upload-artifact v7.0.1, gitleaks-action v3.0.0); no provider secrets; wheel install check; local gitleaks scan of full history: no leaks; KNOWN_LIMITATIONS.md written; CI green pending first push |
+| T6.2 | done | ci.yml pinned (checkout v7.0.1, setup-uv v10.2.0, upload-artifact v7.0.1, gitleaks-action v3.0.0); no provider secrets; wheel install check; local gitleaks scan of full history: no leaks; KNOWN_LIMITATIONS.md written; CI green on first push (run 36347060825) |
 | T6.3 | done | headless Edge renders at 1200px and 480px reviewed: no external resources, tables scroll inside wrappers, long ids wrap; screenshot in docs/sample-report.png; sample report synthetic banner |
 
 ### Day 7：冻结与公开发布
@@ -1095,31 +1095,75 @@ Report the result, commands run, and any remaining limitation.
 
 `docs/provider-assumptions.md` 应记录每项假设的 URL、核对日期、固定版本、fixture 名称、live 验证状态。若文档与实际 API 不一致，保留数据、标记 unsupported/unknown，并修订适配器与测试；不通过修改金额掩盖差异。
 
-## 19. Task status (maintained by the coding agent during the build)
+## 19. Build status (maintained by the coding agent)
 
-Statuses: todo / doing / done / blocked. Evidence lists the verification that passed and the commit.
+Per-task statuses and evidence live in the Day 0-7 tables of section 12. This section
+separates what is built from what is verified and how.
 
-| Task | Status | Evidence / remaining limitation |
+### 19.1 Implementation
+
+- v0.1.0 (tag `v0.1.0`, commit 3502022): T0.1-T7.2 done; every section-12 task row carries
+  its verification and commit.
+- v0.1.1 correctness pass from the external gap review of dcd9041 (items G01-G10):
+  - G01 streaming terminals: request-level LiteLLM log events are the terminal source for
+    streams, first terminal wins, duplicates counted (`terminal_duplicates_ignored`);
+    commit a2b8f57.
+  - G02 context economics: savings incremental to observed cache reads/writes, minimum
+    cacheable prefix gate, "not additive" caveat, `modeled_baseline_cost_usd`.
+  - G03/G07 snapshots: every pull kept; the latest complete fetch covering a UTC day supplies
+    that day (`effective_provider_records`); idempotency per snapshot id, different bytes
+    under the same id refused.
+  - G04 report: refuses stale pricing/reconcile runs, `--allow-stale` renders with a banner
+    and `identity.stale_inputs`.
+  - G05 capture gap: priced per model with that model's own rates and per write tier;
+    evidence only when every feeding snapshot declares `scope_dedicated`
+    (`billing sync --dedicated-scope`), otherwise hypothesis.
+  - G06 comparability: a known-cost lower bound is never `matched` by tolerance
+    (`unpriced` unless E == B); shareable line carries the lower-bound qualifier.
+  - G08 windows: daily grains compared over whole UTC days only; time-based "provisional"
+    guess removed (finality comes from the snapshot).
+  - G09 provenance: input hashes keyed by workspace-relative paths and scoped to the dataset.
+  - G10 docs: `uv run --env-file .env`, one scope id across collector, sync and import.
+  - CI: extra job installs the `live` extra and drives the real LiteLLM router callbacks
+    with mock responses (no network, no keys).
+
+### 19.2 Offline verification
+
+- `uv run ruff check .`, `uv run ruff format --check .`: clean.
+- `uv run pytest -q -m 'not live'`: 140 tests pass (v0.1.0: 128), including the gap-review
+  regressions in `tests/unit/test_reconcile.py`, `test_billing_import.py`,
+  `test_context_econ.py`, `test_report.py` and `tests/integration/test_litellm_router_paths.py`.
+- `uv run aiecon demo --out .aiecon/demo`: 313 calls / 100 outcomes; acceptance script checks
+  the report against `expected_metrics.json` (26/26).
+- Fixture manifests regenerated with `scope_dedicated: true` (synthetic scopes are dedicated
+  by construction); `expected_metrics.json` unchanged.
+
+### 19.3 Live verification (L1)
+
+| Phase | Status | Notes |
 | --- | --- | --- |
-| T0.1 | done | uv lock + uv sync --locked on Python 3.12.11 (119 packages, live extra = litellm[proxy]==1.102.1); AGENTS.md from section 16.1; LICENSE Apache-2.0 |
-| T0.2 | doing | official docs being checked (section 18 sources); provider-assumptions.md and live catalog pending |
-| T1.1 | doing | spec models, schema.sql and contract tests written; verification pending |
-| T1.2 | todo | |
-| T1.3 | todo | |
-| T2.1 | todo | |
-| T2.2 | todo | |
-| T2.3 | todo | |
-| T3.1 | todo | |
-| T3.2 | todo | |
-| T3.3 | todo | |
-| T4.1 | todo | |
-| T4.2 | todo | |
-| T4.3 | todo | |
-| T5.1 | todo | |
-| T5.2 | todo | |
-| T5.3 | todo | |
-| T6.1 | todo | |
-| T6.2 | todo | |
-| T6.3 | todo | |
-| T7.1 | todo | |
-| T7.2 | todo | |
+| 1. LiteLLM proxy install + collection smoke test | done (2026-09-27) | proxy 1.102.1 with `examples/litellm/config.yaml`; envelopes carry provider, model group, litellm version; streaming terminal gap found and fixed (G01) |
+| 2. Dry run of the workload script | pending | `examples/run_workload.py --dry-run` against the local proxy, no spend |
+| 3. Paid workload (budget-capped) | pending | requires the explicit go-ahead; `--budget-usd 10 --max-calls 40 --yes-spend` |
+| 4. Provider reports | pending | `billing sync` needs admin keys (model keys cannot read usage/cost); fallback: console export via `billing import` |
+| 5. Reconcile + report on live data | pending | validation status lines in the report switch from "live reconciliation pending" only after this |
+
+Real LiteLLM `litellm_standard` usage samples are still to be captured as fixtures during
+phase 3.
+
+### 19.4 Evidence
+
+- Public repo `github.com/wanlonghenry/aiecon`; CI run 36347060825 green on 3502022;
+  GitHub Release v0.1.0 with wheel, sdist and sample report; fresh clone: demo 313/100 and
+  128 tests.
+- Gap review: `aiecon-gap-review-dcd9041.md` (external, 2026-09-27); G01 reproduced with the
+  real router before fixing (abandoned and consumed streams never received a terminal).
+- v0.1.1 commits and CI run ids are appended here when pushed.
+
+### 19.5 Open gaps
+
+- L1 live reconciliation for both providers (phases 2-5 above); OpenAI cost-report latency
+  unverified from an official page.
+- Real LiteLLM usage payload fixtures (documentation-derived today).
+- Streams abandoned by the client stay `in_flight` with unknown cost (documented).
+- Everything listed in `KNOWN_LIMITATIONS.md`.

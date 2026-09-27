@@ -1,6 +1,6 @@
 [project]
 name = "aiecon"
-version = "0.1.0"
+version = "0.1.1"
 description = "Reconstruct AI workflow costs, reconcile them with provider reports, and inspect evidence-backed waste and context reuse opportunities."
 readme = "README.md"
 license = "Apache-2.0"

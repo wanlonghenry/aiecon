@@ -75,12 +75,17 @@ provider usage / cost snapshots ──▶ scope + grain alignment ─▶ reconci
 - `aiecon estimate` prices every call from a catalog with effective dates; anything it
   cannot price without guessing stays *unpriced* with a reason.
 - `aiecon billing import` / `aiecon billing sync` bring in provider usage and cost as
-  complete snapshots at the provider's real grain; a new snapshot replaces the old one
-  as a whole.
-- `aiecon reconcile` compares usage and money separately per provider, scope and UTC day,
-  attaches evidence-backed adjustments and leaves the rest as `unexplained`.
+  complete snapshots at the provider's real grain. Every pull is kept; for each provider,
+  scope, record kind and UTC day the latest complete fetch covering that day is the one
+  compared, so re-pulling one day never hides another and amounts are never added twice.
+- `aiecon reconcile` compares usage and money separately per provider, scope and whole UTC
+  day, attaches evidence-backed adjustments and leaves the rest as `unexplained`. A capture
+  gap is priced per model with that model's own rates and counts as evidence only when the
+  snapshot declares the provider scope dedicated to the captured traffic
+  (`billing sync --dedicated-scope`); otherwise it stays a hypothesis.
 - `aiecon report` renders JSON and HTML from one model; nulls are shown as unknown, never
-  as `$0.00`.
+  as `$0.00`. It refuses to render when the selected pricing or reconcile run no longer
+  matches the workspace (`--allow-stale` renders anyway with a STALE INPUTS banner).
 
 Integration steps, the request metadata your application sends, the CSV contract and the
 live workload script: [`docs/integration.md`](docs/integration.md). Storage layout:
@@ -96,7 +101,14 @@ Three-minute walkthrough: [`docs/demo-script.md`](docs/demo-script.md).
   scope and day. It is not an invoice; `settled_cost` only exists when a settlement file was
   imported.
 - **Variance** is `E − B`; the percentage is only computed when `B > 0`. Tolerances classify
-  a bucket as `matched` or `variance`; they change no amounts.
+  a bucket as `matched` or `variance`; they change no amounts. A day whose estimate is only
+  a known-cost lower bound (calls with unknown cost) is never `matched` by tolerance: it is
+  `unpriced` unless E equals B exactly, and its one-line summary says "known-cost lower
+  bound".
+- **Context-economics savings** are incremental: the cache scenario is compared with what
+  the repeated prefix costs today given the cache reads and writes already observed, a
+  prefix shorter than the model's minimum cacheable length gets no scenario, and group
+  results are not additive.
 - **Findings** carry observed cost, evidence ids, assumptions and caveats. Savings are
   scenarios and stay `null` unless the application labeled the call removable or a cache
   scenario is fully priced. The summary reports the *union* of flagged line items and the

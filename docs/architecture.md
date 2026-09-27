@@ -34,7 +34,7 @@ application outcomes ─────► JsonlWriter ─────────�
                                                    │ aiecon estimate + catalog
                                                    ▼
                                      cost_line_items (pricing run, catalog persisted)
-provider API / CSV / JSON ──► staging ──► provider_records (active snapshot per key)
+provider API / CSV / JSON ──► staging ──► provider_records (every snapshot kept; latest per day wins)
                                                    │ aiecon reconcile
                                                    ▼
                                      reconciliation_buckets (usage + cost, evidence)
@@ -50,7 +50,19 @@ provider API / CSV / JSON ──► staging ──► provider_records (active s
 - Same event id + same content is a duplicate; different content is a conflict (exit 3).
 - Estimation is pure: same call and catalog → same line items and ids.
 - A pricing run id is a function of its inputs; re-running replaces, never accumulates.
-- A provider snapshot activates only when complete; the old one is replaced as a whole.
+- Only complete snapshots are registered, and every one stays on file. Which snapshot
+  supplies a (provider, scope, record kind, UTC day) is decided at read time: the latest
+  complete fetch covering that day. Re-importing a snapshot id with the same bytes is a
+  no-op; with different bytes it is a contract error.
+- Daily provider grains are compared over whole UTC days only; a partial-day window is
+  refused rather than compared.
+- A bucket whose local estimate is a known-cost lower bound is never `matched` by tolerance.
+- A capture gap is priced per model with that model's own line-item rates; it is evidence
+  only when every snapshot feeding the day declares the scope dedicated to the captured
+  traffic.
+- A report refuses to mix runs: the active pricing run must match the calls now in the
+  dataset and the active reconcile run must match the pricing run and the snapshots on
+  file, or the render is refused (`--allow-stale` renders with a banner).
 - Estimates are never changed to match provider totals; explained variance requires
   evidence refs; the remainder is `unexplained`.
 - Findings de-duplicate by line item; joint savings are not computed.

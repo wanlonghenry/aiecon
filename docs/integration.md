@@ -9,10 +9,15 @@ local: raw JSONL, one DuckDB file, JSON/HTML output.
 ```bash
 uv sync --locked --extra live                      # pins litellm[proxy]==1.102.1
 cp .env.example .env                               # fill in the keys you have
-uv run aiecon --workspace .aiecon/live init        # live workspace
-uv run aiecon --workspace .aiecon/live doctor --mode live
-uv run litellm --config examples/litellm/config.yaml --port 4000
+uv run --env-file .env aiecon --workspace .aiecon/live init        # live workspace
+uv run --env-file .env aiecon --workspace .aiecon/live doctor --mode live
+uv run --env-file .env litellm --config examples/litellm/config.yaml --port 4000
 ```
+
+`uv run --env-file .env` loads the keys for that one process; nothing else in aiecon reads
+`.env`. The same scope id must be used everywhere: `AIECON_SCOPE_ID` on the collector side,
+`--scope-id` on `billing sync` (or `scope_id` in an import manifest), and `--filter` must
+name the provider project / workspace that carries exactly that traffic.
 
 `examples/litellm/config.yaml` defines two routes, `openai-live` and `anthropic-live`,
 whose real model ids come from `AIECON_OPENAI_MODEL` and `AIECON_ANTHROPIC_MODEL`. Router
@@ -90,21 +95,32 @@ the reservation and stops when a cost cannot be computed, and persists its state
 ```bash
 uv run aiecon --workspace .aiecon/live ingest --input .aiecon/live/raw
 uv run aiecon --workspace .aiecon/live estimate --catalog catalogs/live-demo.json
-uv run aiecon --workspace .aiecon/live billing sync --provider openai --start 2026-09-27 --end 2026-09-29
-uv run aiecon --workspace .aiecon/live billing sync --provider anthropic --start 2026-09-27 --end 2026-09-29
+uv run --env-file .env aiecon --workspace .aiecon/live billing sync --provider openai     --scope-id live_openai_project --filter <openai project id> --dedicated-scope     --start 2026-09-27 --end 2026-09-29
+uv run --env-file .env aiecon --workspace .aiecon/live billing sync --provider anthropic     --scope-id live_anthropic_workspace --filter <anthropic workspace id> --dedicated-scope     --start 2026-09-27 --end 2026-09-29
 uv run aiecon --workspace .aiecon/live reconcile --start 2026-09-27 --end 2026-09-29
 uv run aiecon --workspace .aiecon/live report --out .aiecon/live/reports/report.html
 ```
 
+The `--scope-id` values are the ones the calls carry: `examples/run_workload.py` sends
+`live_openai_project` and `live_anthropic_workspace` in the request metadata (its
+`--scope-openai` / `--scope-anthropic` options), and the collector falls back to
+`AIECON_SCOPE_ID` for requests without one. Without matching scope ids every bucket is
+`scope_mismatch`.
+
 `billing sync` needs `OPENAI_ADMIN_API_KEY` / `ANTHROPIC_ADMIN_API_KEY` (admin keys, not
 model keys). It fetches every page first, stages `records.json` + `manifest.json` under
 `<workspace>/provider/sync/<snapshot_id>/`, then imports the snapshot. A failed pull leaves
-the previously active snapshot untouched. Use `--filter <project or workspace id>` so the
-provider side matches the scope your calls carry; comparing an organisation-wide export
-against one project's calls yields `scope_mismatch`, not a number.
+earlier snapshots untouched. Use `--filter <project or workspace id>` so the provider side
+matches the scope your calls carry; comparing an organisation-wide export against one
+project's calls yields `scope_mismatch`, not a number. Add `--dedicated-scope` only when
+that project / workspace carries nothing but the traffic aiecon captured: it lets a
+provider-side surplus count as an evidence-backed capture gap instead of a hypothesis.
 
-Dates are UTC; `--end` is exclusive. Re-pull the last three days regularly: provider data
-is provisional and may be revised.
+Dates are UTC; `--end` is exclusive; `reconcile` accepts whole UTC days only when daily
+provider grains are involved. Re-pull the last three days regularly: provider data is
+provisional and may be revised. Every pull is kept; for each provider, scope, record kind
+and UTC day the latest complete pull covering that day is the one compared, so a one-day
+re-pull replaces that day only and never hides the others.
 
 ## 4. File import instead of the API
 
@@ -140,10 +156,12 @@ leave `usage_json` empty. Amount units: `usd` (currency units) or `cents`. The m
 }
 ```
 
-`source_hash` must equal the file's SHA-256; re-importing the same file is a no-op; a new
-complete snapshot for the same provider, scope, kind, grain and window replaces the old one
-as a whole. `record_kind` is `provider_usage`, `provider_cost` or `settled_cost`; nothing
-becomes "settled" by being imported.
+`source_hash` must equal the file's SHA-256. Re-importing the same `snapshot_id` with the
+same bytes is a no-op; the same id with different bytes is refused (use a new id for a new
+pull). A newer complete snapshot supplies the UTC days its `query_window` covers; older
+snapshots keep supplying the days it does not. `scope_dedicated: true` may be added when the
+provider scope carries only the captured traffic. `record_kind` is `provider_usage`,
+`provider_cost` or `settled_cost`; nothing becomes "settled" by being imported.
 
 ## 5. Reading the results
 
