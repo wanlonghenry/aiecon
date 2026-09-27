@@ -272,7 +272,7 @@ def billing_import(
                 "snapshot_id": result.snapshot_id,
                 "records": result.record_count,
                 "skipped_same_hash": result.skipped_same_hash,
-                "deactivated_snapshots": ", ".join(result.deactivated_snapshot_ids) or "-",
+                "superseded_snapshots": ", ".join(result.superseded_snapshot_ids) or "-",
                 "non_usd_records": result.non_usd_records,
                 "total_amount_usd": total if total is not None else "n/a (usage snapshot)",
             }
@@ -300,6 +300,17 @@ def billing_sync(
             "--filter", help="Provider project/workspace id to restrict the pull (repeatable)"
         ),
     ] = None,
+    dedicated_scope: Annotated[
+        bool,
+        typer.Option(
+            "--dedicated-scope",
+            help=(
+                "Declare that the pulled project/workspace carries only the traffic captured "
+                "locally, so a provider-side surplus counts as a capture gap (evidence) "
+                "instead of a hypothesis"
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Pull complete usage and cost snapshots from the provider report API (read-only)."""
 
@@ -313,11 +324,13 @@ def billing_sync(
             end=end,
             scope_id=scope_id,
             scope_filter=scope_filter,
+            dedicated_scope=dedicated_scope,
             now_ms=now_ms(),
         )
         _echo_kv(
             {
                 "provider": result.provider.value,
+                "scope_dedicated": dedicated_scope,
                 "window_utc": f"{result.window.start_ms} .. {result.window.end_ms} (ms)",
                 "snapshots": ", ".join(
                     f"{i.snapshot_id}:{i.record_count}"
@@ -387,6 +400,16 @@ def report(
         typer.Option("--monthly-requests", help="Add a clearly labeled monthly projected scenario"),
     ] = None,
     dataset_id: DatasetOpt = None,
+    allow_stale: Annotated[
+        bool,
+        typer.Option(
+            "--allow-stale",
+            help=(
+                "Render even when the active pricing/reconcile runs no longer match the "
+                "workspace (the report is then banner-marked STALE INPUTS)"
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Render the single-page HTML report plus JSON and manifest from the selected runs."""
 
@@ -399,6 +422,7 @@ def report(
             now_ms=now_ms(),
             dataset_id=dataset_id,
             monthly_requests=monthly_requests,
+            allow_stale=allow_stale,
         )
         _echo_kv(
             {

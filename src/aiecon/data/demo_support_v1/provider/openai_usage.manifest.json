@@ -13,6 +13,7 @@
   "record_count": 2,
   "record_kind": "provider_usage",
   "schema_version": "0.1",
+  "scope_dedicated": true,
   "scope_id": "demo_scope_openai",
   "snapshot_complete": true,
   "snapshot_id": "snap_demo-support-v1_openai_usage",

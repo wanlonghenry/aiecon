@@ -1,4 +1,4 @@
-"""T3.1 / V13 / V15: unit conversion, idempotent snapshot import, whole-snapshot replacement."""
+"""T3.1 / V13 / V15: unit conversion, idempotent snapshot import, per-day snapshot selection."""
 
 from __future__ import annotations
 
@@ -135,9 +135,22 @@ def cost_row(record_id: str, day_ms: int, amount: str, line_item: str = "m, inpu
     }
 
 
-def test_new_complete_snapshot_replaces_old_rows_instead_of_adding(
-    synthetic_ws: Workspace, tmp_path: Path
-) -> None:
+def _import(storage: Storage, paths: tuple[Path, Path], now_ms: int = 1):
+    return import_snapshot(
+        storage,
+        file_path=paths[0],
+        manifest_path=paths[1],
+        now_ms=now_ms,
+        workspace_data_kind=DataKind.synthetic,
+    )
+
+
+def test_re_pull_supplies_only_the_days_it_covers(synthetic_ws: Workspace, tmp_path: Path) -> None:
+    """G03: a later one-day pull replaces that day only; the other days keep their source."""
+
+    from aiecon.reconcile import effective_provider_records
+    from aiecon.spec import TimeWindow
+
     old = write_snapshot(
         tmp_path,
         "snap_old",
@@ -145,34 +158,67 @@ def test_new_complete_snapshot_replaces_old_rows_instead_of_adding(
         fetched_at=10,
         window_end=D1 + 2 * DAY,
     )
-    new = write_snapshot(
-        tmp_path, "snap_new", [cost_row("r1", D1, "7")], fetched_at=20, window_end=D1 + 2 * DAY
+    day1_again = write_snapshot(
+        tmp_path, "snap_day1", [cost_row("r1", D1, "7")], fetched_at=20, window_end=D1 + DAY
     )
     with Storage.open(synthetic_ws.db_path) as storage:
-        import_snapshot(
-            storage,
-            file_path=old[0],
-            manifest_path=old[1],
-            now_ms=1,
-            workspace_data_kind=DataKind.synthetic,
+        _import(storage, old)
+        result = _import(storage, day1_again, now_ms=2)
+        assert result.superseded_snapshot_ids == ["snap_old"]
+        # every pull stays on file and active: nothing is deactivated at import time
+        assert {s.snapshot_id for s in storage.list_snapshots()} == {"snap_old", "snap_day1"}
+        assert storage.query("SELECT COUNT(*) FROM provider_records")[0][0] == 3
+        window = TimeWindow(start_ms=D1, end_ms=D1 + 2 * DAY)
+        effective = effective_provider_records(storage, data_kind=DataKind.synthetic, window=window)
+        by_id = {(r.snapshot_id, r.record_id): r.amount_usd for r in effective.records}
+        # day 1 from the newer pull (7, not 5 and never 12); day 2 still from the older pull
+        assert by_id == {("snap_day1", "r1"): Decimal("7"), ("snap_old", "r2"): Decimal("1")}
+        assert effective.snapshot_ids == ["snap_day1", "snap_old"]
+        # a newer pull covering both days supplies both: rows it no longer reports vanish
+        both = write_snapshot(
+            tmp_path, "snap_both", [cost_row("r1", D1, "8")], fetched_at=30, window_end=D1 + 2 * DAY
         )
-        result = import_snapshot(
-            storage,
-            file_path=new[0],
-            manifest_path=new[1],
-            now_ms=2,
-            workspace_data_kind=DataKind.synthetic,
+        _import(storage, both, now_ms=3)
+        effective = effective_provider_records(storage, data_kind=DataKind.synthetic, window=window)
+        assert [(r.snapshot_id, r.record_id, r.amount_usd) for r in effective.records] == [
+            ("snap_both", "r1", Decimal("8"))
+        ]
+        # an older fetch arriving late never overrides a newer one for the same day
+        late = write_snapshot(
+            tmp_path, "snap_late", [cost_row("r1", D1, "6")], fetched_at=25, window_end=D1 + DAY
         )
-        assert result.deactivated_snapshot_ids == ["snap_old"]
-        current = storage.query(
-            "SELECT record_id, amount_usd FROM current_provider_records ORDER BY record_id"
+        _import(storage, late, now_ms=4)
+        effective = effective_provider_records(storage, data_kind=DataKind.synthetic, window=window)
+        assert [r.amount_usd for r in effective.records] == [Decimal("8")]
+
+
+def test_same_snapshot_id_is_idempotent_and_different_content_is_refused(
+    synthetic_ws: Workspace, tmp_path: Path
+) -> None:
+    """G07: idempotency is per snapshot id; the same bytes under a new id are a new observation."""
+
+    first = write_snapshot(
+        tmp_path, "snap_x", [cost_row("r1", D1, "5")], fetched_at=10, window_end=D1 + DAY
+    )
+    with Storage.open(synthetic_ws.db_path) as storage:
+        assert _import(storage, first).record_count == 1
+        again = _import(storage, first, now_ms=2)
+        assert again.skipped_same_hash is True and again.record_count == 0
+        assert storage.query("SELECT COUNT(*) FROM provider_records")[0][0] == 1
+        # same id, different bytes: contract error, nothing changes
+        changed = write_snapshot(
+            tmp_path, "snap_x", [cost_row("r1", D1, "9")], fetched_at=10, window_end=D1 + DAY
         )
-        assert [(r, Decimal(a)) for r, a in current] == [("r1", Decimal("7"))]  # 7, not 12; r2 gone
-        # the old snapshot's rows are retained, inactive, for audit
-        kept = storage.query(
-            "SELECT COUNT(*) FROM provider_records WHERE snapshot_id = 'snap_old'"
-        )[0][0]
-        assert kept == 2
+        with pytest.raises(BillingImportError, match="different content"):
+            _import(storage, changed, now_ms=3)
+        assert storage.scalar("SELECT amount_usd FROM provider_records") == Decimal("5")
+        # same bytes, new id and later fetch: registered as its own snapshot
+        renamed = write_snapshot(
+            tmp_path, "snap_y", [cost_row("r1", D1, "5")], fetched_at=20, window_end=D1 + DAY
+        )
+        result = _import(storage, renamed, now_ms=4)
+        assert result.skipped_same_hash is False and result.record_count == 1
+        assert result.superseded_snapshot_ids == ["snap_x"]
 
 
 def test_hash_mismatch_and_data_kind_mismatch_are_contract_errors(

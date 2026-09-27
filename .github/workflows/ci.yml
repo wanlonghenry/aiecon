@@ -55,6 +55,21 @@ jobs:
             .aiecon/demo/report-manifest.json
           if-no-files-found: error
 
+  live-extra:
+    name: LiteLLM collector paths (live extra, no network)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.19"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install locked dependencies with the live extra
+        run: uv sync --locked --extra live
+      - name: Router paths through the real LiteLLM callbacks (mock responses, no provider calls)
+        run: uv run pytest -q -m 'not live' tests/integration tests/unit/test_collector.py
+
   secret-scan:
     name: secret scan (full history)
     runs-on: ubuntu-latest

@@ -52,6 +52,9 @@
   {% if report.identity.data_kind == "synthetic" %}
   <div class="banner">SYNTHETIC DEMO — every number on this page comes from generated fixtures, not from a real account.</div>
   {% endif %}
+  {% if report.identity.stale_inputs %}
+  <div class="banner">STALE INPUTS — this report was rendered with an override; its runs no longer match the workspace: {{ report.identity.stale_inputs | join(" · ") }}</div>
+  {% endif %}
   <h1>aiecon cost report</h1>
   <p class="lead">Dataset <code>{{ report.identity.dataset_id }}</code> · generated {{ report.identity.generated_at_ms | ts }} · aiecon {{ report.identity.aiecon_version }}</p>
 
@@ -169,13 +172,13 @@
   <h2>6. Context economics <small>{{ report.context_economics.calls_with_prefix_evidence | num }} calls with prefix evidence · {{ report.context_economics.calls_without_prefix_evidence | num }} without</small></h2>
   {% if report.context_economics.note %}<p class="muted">{{ report.context_economics.note }}</p>{% endif %}
   <div class="wrap"><table>
-    <thead><tr><th>scope / model</th><th>prefix</th><th class="num">calls</th><th class="num">prefix tokens</th><th class="num">observed reads</th><th class="num">observed writes</th><th>scenario</th><th class="num">no-cache</th><th class="num">cached</th><th class="num">savings</th><th class="num">break-even</th><th>recommendation</th></tr></thead>
+    <thead><tr><th>scope / model</th><th>prefix</th><th class="num">calls</th><th class="num">prefix tokens</th><th class="num">observed reads</th><th class="num">observed writes</th><th>scenario</th><th class="num">no-cache</th><th class="num">today</th><th class="num">cached</th><th class="num">savings</th><th class="num">break-even</th><th>recommendation</th></tr></thead>
     <tbody>
     {% for g in report.context_economics.groups %}
     <tr><td class="id">{{ g.scope_id }} · {{ g.model_resolved }}{% if g.cache_policy %} · {{ g.cache_policy }}{% endif %}</td><td class="id">{{ g.prefix_fingerprint[:16] }}…</td>
         <td class="num">{{ g.calls | num }}</td><td class="num">{{ g.prefix_tokens | num }}</td><td class="num">{{ g.observed_cache_read_tokens | num }}</td><td class="num">{{ g.observed_cache_write_tokens | num }}</td>
         <td>{{ g.scenario_policy or "—" }}{% if g.segments %} ({{ g.segments | length }} segment{{ "s" if g.segments | length != 1 }}){% endif %}</td>
-        <td class="num">{{ g.modeled_no_cache_cost_usd | usd }}</td><td class="num">{{ g.modeled_cache_cost_usd | usd }}</td><td class="num">{{ g.modeled_savings_usd | usd }}</td><td class="num">{{ g.break_even_reuses | num }}</td>
+        <td class="num">{{ g.modeled_no_cache_cost_usd | usd }}</td><td class="num">{{ g.modeled_baseline_cost_usd | usd }}</td><td class="num">{{ g.modeled_cache_cost_usd | usd }}</td><td class="num">{{ g.modeled_savings_usd | usd }}</td><td class="num">{{ g.break_even_reuses | num }}</td>
         <td><span class="status">{{ g.recommendation }}</span></td></tr>
     {% endfor %}
     </tbody>

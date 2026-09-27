@@ -5,10 +5,12 @@ File contract: CSV columns
 or a JSON document ``{"records": [...]}`` with the same field names (``dimensions_json`` and
 ``usage_json`` may be JSON strings or objects). A manifest JSON accompanies the file.
 
-Rules: the manifest's ``source_hash`` must equal the SHA-256 of the file; a snapshot whose
-hash is already active is skipped (re-importing never adds active amounts); the snapshot's
-``data_kind`` must match the workspace; a complete snapshot replaces the previously active
-one for the same provider/scope/kind/grain/window as a whole.
+Rules: the manifest's ``source_hash`` must equal the SHA-256 of the file; re-importing a
+snapshot id with the same bytes is a no-op and with different bytes a contract error, so
+amounts are never added twice; the snapshot's ``data_kind`` must match the workspace; only
+complete snapshots are registered. Every snapshot stays on file: which one supplies a given
+UTC day is decided at read time (latest complete fetch covering that day), so a re-pull of
+one day never hides the other days of an earlier pull (PLAN.md §7.4).
 """
 
 from __future__ import annotations
@@ -49,7 +51,7 @@ class BillingImportError(Exception):
 class ImportResult:
     snapshot_id: str
     record_count: int
-    deactivated_snapshot_ids: list[str] = field(default_factory=list)
+    superseded_snapshot_ids: list[str] = field(default_factory=list)
     skipped_same_hash: bool = False
     non_usd_records: int = 0
     total_amount_usd: Decimal | None = None
@@ -268,21 +270,32 @@ def import_snapshot(
             "only complete snapshots may be activated; keep partial pulls in staging"
         )
 
-    existing = storage.snapshot_exists_with_hash(file_hash)
-    if existing is not None:
-        return ImportResult(snapshot_id=existing, record_count=0, skipped_same_hash=True)
+    # Idempotency is per snapshot id: re-running the same import is a no-op, while the same
+    # bytes under a new snapshot id (a later observation, e.g. provisional -> settled) are
+    # registered as a new snapshot with their own manifest. Reusing an id for different
+    # content is a contract error.
+    existing_hash = storage.snapshot_source_hash(manifest.snapshot_id)
+    if existing_hash is not None:
+        if existing_hash == file_hash:
+            return ImportResult(
+                snapshot_id=manifest.snapshot_id, record_count=0, skipped_same_hash=True
+            )
+        raise BillingImportError(
+            f"snapshot_id {manifest.snapshot_id} was already imported with different "
+            "content; use a new snapshot_id for a new pull"
+        )
 
     rows = read_records(file_path)
     records, non_usd = build_records(manifest, rows, source_hash=file_hash)
     with storage.transaction():
-        count, deactivated = storage.register_snapshot(manifest, records)
+        count, superseded = storage.register_snapshot(manifest, records)
     total = None
     if manifest.record_kind is not RecordKind.provider_usage:
         total = sum((r.amount_usd for r in records if r.amount_usd is not None), start=Decimal(0))
     return ImportResult(
         snapshot_id=manifest.snapshot_id,
         record_count=count,
-        deactivated_snapshot_ids=deactivated,
+        superseded_snapshot_ids=superseded,
         non_usd_records=non_usd,
         total_amount_usd=total,
     )

@@ -129,3 +129,11 @@ class ProviderSnapshotManifest(SpecModel):
     scope_filter: dict[str, str] | None = Field(
         default=None, description="Provider-side filter used (project/workspace ids)"
     )
+    scope_dedicated: bool | None = Field(
+        default=None,
+        description=(
+            "True when the provider scope carries only the traffic captured locally, so a "
+            "provider-side surplus is evidence of a capture gap rather than other traffic; "
+            "None means unknown"
+        ),
+    )

@@ -38,6 +38,13 @@ class ReportIdentity(SpecModel):
     finality_counts: dict[str, int] = Field(default_factory=dict)
     call_count: NonNegInt = 0
     outcome_count: NonNegInt = 0
+    stale_inputs: list[ShortText] = Field(
+        default_factory=list,
+        description=(
+            "Non-empty when the selected pricing or reconcile run no longer matches the "
+            "workspace contents; such a report was rendered with an explicit override"
+        ),
+    )
 
 
 class OutcomeSection(SpecModel):

@@ -809,33 +809,31 @@ class Storage:
     def register_snapshot(
         self, manifest: ProviderSnapshotManifest, records: Iterable[ProviderRecord]
     ) -> tuple[int, list[str]]:
-        """Insert a complete snapshot and make it the only active one for its key.
+        """Insert a complete snapshot and keep every snapshot on file.
 
-        Returns ``(record_count, deactivated_snapshot_ids)``. Snapshots sharing provider,
-        scope, record_kind, grain and an overlapping window are replaced as a whole, so rows
-        that disappeared upstream disappear here too (PLAN.md §7.4).
+        Returns ``(record_count, superseded_snapshot_ids)``: earlier snapshots of the same
+        provider, scope and record kind whose query window overlaps this one. Nothing is
+        deactivated here; which snapshot supplies a given UTC day is decided at read time by
+        :func:`aiecon.reconcile.effective_provider_records` (latest fetch covering that
+        day), so a re-pull of one day never hides other days (PLAN.md §7.4).
         """
 
         rows = self.query(
             "SELECT snapshot_id FROM meta_snapshots WHERE provider = ? AND scope_id = ? AND "
-            "record_kind = ? AND grain = ? AND data_kind = ? AND active AND "
-            "window_start_ms < ? AND window_end_ms > ? AND snapshot_id <> ?",
+            "record_kind = ? AND data_kind = ? AND active AND "
+            "window_start_ms < ? AND window_end_ms > ? AND snapshot_id <> ? AND fetched_at_ms <= ?",
             [
                 manifest.provider.value,
                 manifest.scope_id,
                 manifest.record_kind.value,
-                manifest.grain,
                 manifest.data_kind.value,
                 manifest.query_window.end_ms,
                 manifest.query_window.start_ms,
                 manifest.snapshot_id,
+                manifest.fetched_at_ms,
             ],
         )
-        deactivated = [row[0] for row in rows]
-        for snapshot_id in deactivated:
-            self.con.execute(
-                "UPDATE meta_snapshots SET active = FALSE WHERE snapshot_id = ?", [snapshot_id]
-            )
+        superseded = [row[0] for row in rows]
         self.con.execute(
             "DELETE FROM provider_records WHERE snapshot_id = ?", [manifest.snapshot_id]
         )
@@ -862,12 +860,13 @@ class Storage:
                 manifest.model_dump_json(),
             ],
         )
-        return count, deactivated
+        return count, superseded
 
-    def snapshot_exists_with_hash(self, source_hash: str) -> str | None:
+    def snapshot_source_hash(self, snapshot_id: str) -> str | None:
+        """Source hash of an already registered snapshot id, or None."""
+
         return self.scalar(
-            "SELECT snapshot_id FROM meta_snapshots WHERE source_hash = ? AND active LIMIT 1",
-            [source_hash],
+            "SELECT source_hash FROM meta_snapshots WHERE snapshot_id = ?", [snapshot_id]
         )
 
     def list_snapshots(self, *, active_only: bool = True) -> list[ProviderSnapshotManifest]:

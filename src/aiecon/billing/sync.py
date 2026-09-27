@@ -2,8 +2,9 @@
 
 The poller never writes a partial snapshot: every page is fetched first, the records and a
 manifest are written under ``<workspace>/provider/sync/<snapshot_id>/`` and only then does
-the ordinary file importer activate the snapshot. A failed pull leaves the previously active
-snapshot untouched (V16).
+the ordinary file importer register the snapshot. A failed pull leaves earlier snapshots
+untouched (V16). Every pull is kept; which snapshot supplies a given UTC day is decided at
+read time (latest complete fetch covering that day, see ``aiecon.reconcile``).
 """
 
 from __future__ import annotations
@@ -73,6 +74,7 @@ def run_sync(
     scope_id: str,
     now_ms: int,
     scope_filter: Sequence[str] | None = None,
+    dedicated_scope: bool = False,
     client: httpx.Client | None = None,
     sleeper: Callable[[float], None] | None = None,
     base_url: str | None = None,
@@ -142,6 +144,7 @@ def run_sync(
             currency="USD",
             source_type="api_poller",
             scope_filter={filter_key: ",".join(scope_filter)} if scope_filter else None,
+            scope_dedicated=dedicated_scope,
             notes=(
                 "Provider-reported data; provisional until the provider stops revising it. "
                 "Not an invoice."

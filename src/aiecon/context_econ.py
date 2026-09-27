@@ -7,9 +7,14 @@ Three facts are kept apart for every group of calls that shared a fingerprinted 
 * optimization scenario - what the same sequence would have cost under a cache policy the
   catalog verifies for the model, using the §8.3 formula per cold-start segment
 
+Savings are incremental: the scenario is compared with what the prefix costs today given the
+cache reads and writes the provider already reported, never with a hypothetical "no cache at
+all" baseline when caching is partly in place. A prefix shorter than the model's minimum
+cacheable length gets no scenario at all.
+
 Groups are keyed by scope, provider, resolved model, cache policy, fingerprint key and
 fingerprint; reuse is never inferred across scopes or keys, and never from equal token
-counts. Calls without prefix evidence are only counted.
+counts. Calls without prefix evidence are only counted. Group results are not additive.
 """
 
 from __future__ import annotations
@@ -44,6 +49,10 @@ POLICY_WRITE_RESOURCE: dict[str, Resource | None] = {
     "provider_auto": None,  # no separate write charge: the first pass is billed as uncached
 }
 ALREADY_CACHED_COVERAGE = Decimal("0.9")
+NOT_ADDITIVE = (
+    "modeled savings of different groups are not additive: a shared cache or a changed traffic "
+    "mix alters each group's result, and only the best single action is summarized"
+)
 
 
 @dataclass
@@ -51,11 +60,14 @@ class Scenario:
     policy: str
     segments: list[CacheSegment]
     no_cache_cost: Decimal
+    baseline_cost: Decimal
     cache_cost: Decimal
 
     @property
     def savings(self) -> Decimal:
-        return self.no_cache_cost - self.cache_cost
+        """Incremental saving against today's observed cache usage, not against no cache."""
+
+        return self.baseline_cost - self.cache_cost
 
 
 @dataclass
@@ -122,6 +134,30 @@ def scenario_cost(
     return no_cache, cache
 
 
+def baseline_cost(
+    n: int,
+    prefix_tokens: int,
+    observed_read: int,
+    observed_write: int,
+    pu: Decimal,
+    pw_observed: Decimal,
+    pr: Decimal,
+) -> tuple[Decimal, int, int]:
+    """What the repeated prefix costs today, given the cache usage the provider reported.
+
+    Reads and writes are attributed to the prefix (cache hits can only come from a shared
+    prefix) and capped at the prefix volume. Returns ``(cost, reads_in_prefix,
+    writes_in_prefix)``.
+    """
+
+    total = n * prefix_tokens
+    reads = min(observed_read, total)
+    writes = min(observed_write, total - reads)
+    uncached = total - reads - writes
+    cost = Decimal(uncached) * pu + Decimal(reads) * pr + Decimal(writes) * pw_observed
+    return cost, reads, writes
+
+
 def _unit_price(
     index: CatalogIndex, call: ModelCall, model_id: str, resource: Resource
 ) -> Decimal | None:
@@ -132,6 +168,28 @@ def _unit_price(
     if record is None:
         return None
     return record.unit_price / Decimal(record.unit_quantity)
+
+
+def _observed_write_price(
+    index: CatalogIndex, sample: ModelCall, model_id: str, usable: list[ModelCall], pu: Decimal
+) -> Decimal:
+    """Price of the write tier the calls actually used; the uncached rate when unknown.
+
+    Falling back to the uncached rate understates today's cost and therefore the savings,
+    which is the conservative direction.
+    """
+
+    tiers: dict[str, int] = defaultdict(int)
+    for call in usable:
+        for tier, tokens in (call.cache_write_breakdown or {}).items():
+            tiers[tier] += tokens
+    resource = None
+    if tiers.get("ephemeral_1h", 0) > 0 and tiers.get("ephemeral_5m", 0) == 0:
+        resource = Resource.input_cache_write_1h
+    elif tiers.get("ephemeral_5m", 0) > 0 or not tiers:
+        resource = Resource.input_cache_write_5m
+    price = _unit_price(index, sample, model_id, resource) if resource is not None else None
+    return price if price is not None else pu
 
 
 def analyze(calls: list[ModelCall], index: CatalogIndex, *, dataset_id: str) -> ContextEconResult:
@@ -227,8 +285,32 @@ def analyze(calls: list[ModelCall], index: CatalogIndex, *, dataset_id: str) -> 
         if pu is None or pr is None:
             result_groups.append(insufficient("uncached or cache-read price missing"))
             continue
-        if method and method.startswith("estimated"):
+        provider_counted = bool(method) and not method.startswith("estimated")
+        if not provider_counted:
             caveats.append("prefix tokens are estimated, not provider-counted (evidence class D)")
+
+        minimum = contract.min_cacheable_prefix_tokens
+        if minimum is not None and prefix_tokens < minimum:
+            result_groups.append(
+                ContextEconGroup(
+                    **common,
+                    candidate_repeated_prefix_tokens=0,
+                    recommendation=ContextRecommendation.not_beneficial,
+                    evidence_level=EvidenceLevel.modeled,
+                    confidence=ConfidenceClass.high if provider_counted else ConfidenceClass.medium,
+                    supported_ttl_candidates=list(contract.supported_cache_policies),
+                    assumptions=[
+                        "the catalog's minimum cacheable prefix applies to this request shape"
+                    ],
+                    caveats=[
+                        *caveats,
+                        f"prefix of {prefix_tokens} tokens is below the model's minimum "
+                        f"cacheable prefix ({minimum}); the provider would not cache it, so no "
+                        "savings are modeled",
+                    ],
+                )
+            )
+            continue
 
         n = len(usable)
         candidate_repeat = max(0, (n - 1) * prefix_tokens - observed_read)
@@ -252,6 +334,10 @@ def analyze(calls: list[ModelCall], index: CatalogIndex, *, dataset_id: str) -> 
             )
             continue
 
+        pw_observed = _observed_write_price(index, sample, model_id, usable, pu)
+        baseline, reads_in_prefix, writes_in_prefix = baseline_cost(
+            n, prefix_tokens, observed_read, observed_write, pu, pw_observed, pr
+        )
         scenarios: list[Scenario] = []
         for candidate in contract.supported_cache_policies:
             ttl = POLICY_TTL_MS.get(candidate)
@@ -267,7 +353,7 @@ def analyze(calls: list[ModelCall], index: CatalogIndex, *, dataset_id: str) -> 
                 pw = pw_price
             segs = segments_for(usable, ttl)
             no_cache, cache = scenario_cost(n, prefix_tokens, len(segs), pu, pw, pr)
-            scenarios.append(Scenario(candidate, segs, no_cache, cache))
+            scenarios.append(Scenario(candidate, segs, no_cache, baseline, cache))
         if not scenarios:
             result_groups.append(insufficient("no supported cache policy has verified prices"))
             continue
@@ -288,8 +374,12 @@ def analyze(calls: list[ModelCall], index: CatalogIndex, *, dataset_id: str) -> 
         caveats.append(
             "scenario values are modeled, not observed; provider cache behaviour may differ"
         )
-        if observed_read:
-            caveats.append("existing cache reads are excluded from the candidate repeated prefix")
+        if reads_in_prefix or writes_in_prefix:
+            caveats.append(
+                "savings are incremental to the cache usage already observed "
+                f"({reads_in_prefix} tokens read, {writes_in_prefix} written inside the prefix)"
+            )
+        caveats.append(NOT_ADDITIVE)
         recommendation = (
             ContextRecommendation.beneficial
             if best.savings > 0
@@ -302,6 +392,7 @@ def analyze(calls: list[ModelCall], index: CatalogIndex, *, dataset_id: str) -> 
                 scenario_policy=best.policy,
                 segments=best.segments,
                 modeled_no_cache_cost_usd=_q(best.no_cache_cost),
+                modeled_baseline_cost_usd=_q(best.baseline_cost),
                 modeled_cache_cost_usd=_q(best.cache_cost),
                 modeled_savings_usd=_q(best.savings),
                 break_even_reuses=break_even_reuses(pu, pw_best, pr),

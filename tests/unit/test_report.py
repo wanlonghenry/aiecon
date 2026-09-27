@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from aiecon.reconcile import reconcile
 from aiecon.report import build_report, render_html, write_report
 from aiecon.spec import DataKind, TimeWindow
 from aiecon.spec.report import Report
-from aiecon.storage import Storage, Workspace
+from aiecon.storage import Storage, Workspace, WorkspaceError
 
 D1 = 1_790_380_800_000
 DAY = 86_400_000
@@ -135,3 +136,92 @@ def test_report_json_validates_against_model(demo_report) -> None:
     # decimals stay strings in JSON
     raw = json.loads(text)
     assert isinstance(raw["outcome_economics"]["cohort_known_cost_usd"], str)
+
+
+def _prepared_workspace(tmp_path: Path) -> Workspace:
+    ws = Workspace(tmp_path / "ws")
+    ws.init(data_kind=DataKind.synthetic, now_ms=1, aiecon_version=__version__)
+    raw_day = ws.raw_dir / "2026-09-26"
+    raw_day.mkdir(parents=True)
+    shutil.copyfile(fixture_root() / "events.jsonl", raw_day / "events.jsonl")
+    with Storage.open(ws.db_path) as storage:
+        ingest_paths(storage, [ws.raw_dir], now_ms=2, workspace_data_kind=DataKind.synthetic)
+        run_pricing(storage, "demo-support-v1", load_synthetic_catalog(), now_ms=3)
+        root = fixture_root() / "provider"
+        for name in PROVIDER_FIXTURES:
+            import_snapshot(
+                storage,
+                file_path=root / f"{name}.json",
+                manifest_path=root / f"{name}.manifest.json",
+                now_ms=4,
+                workspace_data_kind=DataKind.synthetic,
+            )
+        reconcile(
+            storage, "demo-support-v1", TimeWindow(start_ms=D1, end_ms=D1 + 2 * DAY), now_ms=5
+        )
+    return ws
+
+
+def test_input_hashes_are_workspace_relative_and_dataset_scoped(tmp_path: Path) -> None:
+    """G09: same-named files in different folders never collapse; only this dataset's inputs."""
+
+    ws = _prepared_workspace(tmp_path)
+    with Storage.open(ws.db_path) as storage:
+        report = build_report(storage, "demo-support-v1", now_ms=6, workspace_root=ws.root)
+    hashes = report.limitations.input_file_hashes
+    assert "raw/2026-09-26/events.jsonl" in hashes
+    files = [k for k in hashes if not k.startswith("snapshot:")]
+    assert files and not any(chr(92) in k or ":" in k.split("/")[0] for k in files)
+    assert {k for k in hashes if k.startswith("snapshot:")} == {
+        f"snapshot:snap_demo-support-v1_{name}" for name in PROVIDER_FIXTURES
+    }
+    assert report.identity.stale_inputs == []
+
+
+def test_stale_runs_are_refused_unless_explicitly_allowed(tmp_path: Path) -> None:
+    """G04: a report never silently mixes old runs with newer workspace contents."""
+
+    ws = _prepared_workspace(tmp_path)
+    with Storage.open(ws.db_path) as storage:
+        # a newer provider snapshot would now be selected for the reconcile window
+        provider = fixture_root() / "provider"
+        body = (provider / "anthropic_cost.json").read_text("utf-8")
+        manifest = json.loads((provider / "anthropic_cost.manifest.json").read_text("utf-8"))
+        manifest["snapshot_id"] = "snap_repull"
+        manifest["fetched_at_ms"] = manifest["fetched_at_ms"] + DAY
+        (tmp_path / "repull.json").write_text(body, encoding="utf-8", newline="\n")
+        (tmp_path / "repull.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        import_snapshot(
+            storage,
+            file_path=tmp_path / "repull.json",
+            manifest_path=tmp_path / "repull.manifest.json",
+            now_ms=7,
+            workspace_data_kind=DataKind.synthetic,
+        )
+        with pytest.raises(WorkspaceError, match="stale"):
+            build_report(storage, "demo-support-v1", now_ms=8, workspace_root=ws.root)
+        report = build_report(
+            storage, "demo-support-v1", now_ms=8, workspace_root=ws.root, allow_stale=True
+        )
+        assert len(report.identity.stale_inputs) == 1
+        assert "provider snapshots changed" in report.identity.stale_inputs[0]
+        assert "STALE INPUTS" in render_html(report)
+        assert report.limitations.notes[1].startswith("STALE INPUTS")
+        # re-running reconcile clears it; a new pricing run then makes the reconcile run stale
+        reconcile(
+            storage, "demo-support-v1", TimeWindow(start_ms=D1, end_ms=D1 + 2 * DAY), now_ms=9
+        )
+        fresh = build_report(storage, "demo-support-v1", now_ms=10, workspace_root=ws.root)
+        assert fresh.identity.stale_inputs == []
+        assert "snap_repull" in fresh.identity.provider_snapshot_ids
+        base = load_synthetic_catalog()
+        repriced = base.model_copy(
+            update={
+                "records": [
+                    r.model_copy(update={"unit_price": r.unit_price * 2}) for r in base.records
+                ]
+            }
+        )
+        run_pricing(storage, "demo-support-v1", repriced, now_ms=11)
+        with pytest.raises(WorkspaceError, match="pricing run"):
+            build_report(storage, "demo-support-v1", now_ms=12, workspace_root=ws.root)

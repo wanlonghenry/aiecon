@@ -112,6 +112,13 @@ class ContextEconGroup(SpecModel):
     scenario_policy: CodeStr | None = None
     segments: list[CacheSegment] = Field(default_factory=list)
     modeled_no_cache_cost_usd: DecimalStr | None = None
+    modeled_baseline_cost_usd: DecimalStr | None = Field(
+        default=None,
+        description=(
+            "What the repeated prefix costs today given the observed cache reads and writes; "
+            "modeled_savings_usd is measured against this, not against no cache at all"
+        ),
+    )
     modeled_cache_cost_usd: DecimalStr | None = None
     modeled_savings_usd: DecimalStr | None = None
     break_even_reuses: NonNegInt | None = None

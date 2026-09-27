@@ -706,6 +706,7 @@ def build_provider_fixtures(calls: list[Call]) -> dict[str, dict[str, Any]]:
                     "amounts are artificial."
                 ),
                 "source_type": "file_import",
+                "scope_dedicated": True,
             }
             fixtures[f"{provider}_{kind}"] = {"body_text": raw, "manifest": manifest}
     return fixtures

@@ -1,4 +1,4 @@
-"""T3.3 / V17 / V18 / V19 / V30 and the demo billing scenarios."""
+"""T3.3 / V17 / V18 / V19 / V30, the demo billing scenarios and the gap-review regressions."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from aiecon.pricing import load_synthetic_catalog
 from aiecon.pricing.run import run_pricing
 from aiecon.reconcile import reconcile, shareable_line
 from aiecon.spec import ComparisonKind, DataKind, ReconciliationStatus, TimeWindow
-from aiecon.storage import Storage, Workspace
+from aiecon.storage import Storage, Workspace, WorkspaceError
 
 D1 = 1_790_380_800_000
 DAY = 86_400_000
@@ -124,13 +124,28 @@ def test_shareable_lines_only_for_positive_provider_cost(demo_storage: Storage) 
     result = reconcile(demo_storage, "demo-support-v1", WINDOW, now_ms=5)
     lines = result.summary_lines
     assert len(lines) == 4
-    day2 = cost_buckets(result)["cost_comparison/anthropic/demo_scope_anthropic/2026-09-27"]
+    costs = cost_buckets(result)
+    day2 = costs["cost_comparison/anthropic/demo_scope_anthropic/2026-09-27"]
     pct = abs(day2.variance_pct).quantize(Decimal("0.1"))
     where = "(anthropic, demo_scope_anthropic, 2026-09-27 UTC)"
-    assert f"Your estimates run {pct}% below provider-reported costs {where}." in lines
+    assert any(
+        line.startswith(f"Your estimates run {pct}% below provider-reported costs {where}.")
+        for line in lines
+    )
     where = "(openai, demo_scope_openai, 2026-09-26 UTC)"
-    assert f"Your estimates run 0.0% above provider-reported costs {where}." in lines
+    assert any(
+        line.startswith(f"Your estimates run 0.0% above provider-reported costs {where}.")
+        for line in lines
+    )
     assert not any("invoice" in line for line in lines)
+    # G08: a known-cost lower bound and provisional provider data are said out loud
+    day1 = costs["cost_comparison/anthropic/demo_scope_anthropic/2026-09-26"]
+    assert day1.local_cost_complete is False
+    line = shareable_line(day1)
+    assert f"known-cost lower bound: {day1.local_unpriced_call_count} call(s)" in line
+    assert "provider data provisional" in line
+    complete = day1.model_copy(update={"local_cost_complete": True, "reasons": []})
+    assert "[" not in shareable_line(complete)
     # V18 / V30: B = 0, B < 0 and B missing never print a percentage
     zero = day2.model_copy(update={"provider_cost_usd": Decimal(0), "variance_pct": None})
     assert "%" not in shareable_line(zero)
@@ -215,3 +230,207 @@ def test_variance_pct_null_when_b_is_zero_or_negative(demo_storage: Storage) -> 
     assert _variance_pct(Decimal("1"), Decimal("0")) is None
     assert _variance_pct(Decimal("1"), Decimal("-2")) is None
     assert _variance_pct(Decimal("1.1"), Decimal("1")) == Decimal("10.0000")
+
+
+# ------------------------------------------------------------ gap-review regressions
+ANTHROPIC_DAY1_USAGE = {
+    "cache_creation": {"ephemeral_1h_input_tokens": 0, "ephemeral_5m_input_tokens": 2500},
+    "cache_read_input_tokens": 35000,
+    "output_tokens": 29225,
+    "uncached_input_tokens": 184750,
+}
+NO_USAGE = {
+    "cache_creation": {"ephemeral_1h_input_tokens": 0, "ephemeral_5m_input_tokens": 0},
+    "cache_read_input_tokens": 0,
+    "output_tokens": 100,
+    "uncached_input_tokens": 1000,
+}
+
+
+def import_rows(
+    storage: Storage,
+    tmp_path: Path,
+    *,
+    name: str,
+    record_kind: str,
+    grain: str,
+    rows: list[dict],
+    window: tuple[int, int],
+    fetched_at: int,
+    dedicated: bool | None,
+) -> None:
+    body = json.dumps({"records": rows}, indent=2, sort_keys=True) + "\n"
+    (tmp_path / f"{name}.json").write_text(body, encoding="utf-8", newline="\n")
+    manifest = {
+        "schema_version": "0.1",
+        "snapshot_id": name,
+        "provider": "anthropic",
+        "scope_id": "demo_scope_anthropic",
+        "record_kind": record_kind,
+        "data_kind": "synthetic",
+        "grain": grain,
+        "query_window": {"start_ms": window[0], "end_ms": window[1]},
+        "fetched_at_ms": fetched_at,
+        "source_ref": f"synthetic://test/{name}",
+        "source_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        "finality": "provisional",
+        "snapshot_complete": True,
+        "scope_dedicated": dedicated,
+    }
+    (tmp_path / f"{name}.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    import_snapshot(
+        storage,
+        file_path=tmp_path / f"{name}.json",
+        manifest_path=tmp_path / f"{name}.manifest.json",
+        now_ms=fetched_at,
+        workspace_data_kind=DataKind.synthetic,
+    )
+
+
+def usage_row(record_id: str, day_ms: int, model: str, usage: dict) -> dict:
+    return {
+        "record_id": record_id,
+        "window_start_ms": day_ms,
+        "window_end_ms": day_ms + DAY,
+        "dimensions_json": {"model": model, "workspace_id": "demo_scope_anthropic"},
+        "amount_original": None,
+        "amount_unit": None,
+        "currency": None,
+        "usage_json": usage,
+    }
+
+
+def anthropic_usage_day1(result):
+    return {
+        b.dimensions["model"]: b
+        for b in result.buckets
+        if b.comparison_kind is ComparisonKind.usage_comparison
+        and b.provider.value == "anthropic"
+        and b.dimensions["day"] == "2026-09-26"
+    }
+
+
+def test_daily_grains_require_whole_utc_day_windows(demo_storage: Storage) -> None:
+    """G08: partial days are never compared with daily provider totals."""
+
+    partial = TimeWindow(start_ms=D1 + 3_600_000, end_ms=D1 + 2 * DAY)
+    with pytest.raises(WorkspaceError, match="whole UTC days"):
+        reconcile(demo_storage, "demo-support-v1", partial, now_ms=5)
+
+
+def test_unknown_cost_calls_never_match_by_tolerance(demo_storage: Storage, tmp_path: Path) -> None:
+    """G06: a lower-bound estimate inside the tolerance band is ``unpriced``, not ``matched``."""
+
+    first = reconcile(demo_storage, "demo-support-v1", WINDOW, now_ms=5)
+    target = next(
+        b
+        for b in cost_buckets(first).values()
+        if b.provider.value == "anthropic" and b.local_unpriced_call_count > 0
+    )
+    day_ms = target.window_start_ms
+    other_day = next(
+        b
+        for b in cost_buckets(first).values()
+        if b.provider.value == "anthropic" and b.window_start_ms != day_ms
+    )
+    import_rows(
+        demo_storage,
+        tmp_path,
+        name="snap_near_match",
+        record_kind="provider_cost",
+        grain="1d/workspace_id",
+        rows=[
+            {
+                "record_id": "near",
+                "window_start_ms": day_ms,
+                "window_end_ms": day_ms + DAY,
+                "dimensions_json": {"workspace_id": "demo_scope_anthropic"},
+                "amount_original": str(target.local_estimate_usd + Decimal("0.005")),
+                "amount_unit": "usd",
+                "currency": "USD",
+                "usage_json": None,
+            }
+        ],
+        window=(day_ms, day_ms + DAY),
+        fetched_at=D1 + 5 * DAY,
+        dedicated=True,
+    )
+    second = reconcile(demo_storage, "demo-support-v1", WINDOW, now_ms=6)
+    bucket = cost_buckets(second)[target.bucket_key]
+    assert bucket.provider_snapshot_ids == ["snap_near_match"]
+    assert bucket.absolute_variance_usd <= bucket.tolerance_usd
+    assert bucket.status is ReconciliationStatus.unpriced
+    assert bucket.local_cost_complete is False and "unpriced_calls" in bucket.reasons
+    line = shareable_line(bucket)
+    assert "%" not in line and line.startswith("unpriced")
+    # the other day is still supplied by the fixture snapshot: one-day re-pulls replace one day
+    untouched = cost_buckets(second)[other_day.bucket_key]
+    assert untouched.provider_snapshot_ids == other_day.provider_snapshot_ids
+    assert untouched.provider_cost_usd == other_day.provider_cost_usd
+    assert second.manifest.reconcile_run_id != first.manifest.reconcile_run_id
+
+
+def test_capture_gap_uses_each_models_own_prices(demo_storage: Storage, tmp_path: Path) -> None:
+    """G05: surplus on a model without local prices is never priced with another model's rates."""
+
+    expected = load_expected_metrics()
+    import_rows(
+        demo_storage,
+        tmp_path,
+        name="snap_two_models",
+        record_kind="provider_usage",
+        grain="1d/model,workspace_id",
+        rows=[
+            usage_row("v1", D1, "fixture-anthropic-v1", ANTHROPIC_DAY1_USAGE),
+            usage_row("v2", D1, "fixture-anthropic-v2", NO_USAGE),
+        ],
+        window=(D1, D1 + DAY),
+        fetched_at=D1 + 5 * DAY,
+        dedicated=True,
+    )
+    result = reconcile(demo_storage, "demo-support-v1", WINDOW, now_ms=6)
+    usage = anthropic_usage_day1(result)
+    assert set(usage) == {"fixture-anthropic-v1", "fixture-anthropic-v2"}
+    assert usage["fixture-anthropic-v2"].local_call_count == 0
+    assert usage["fixture-anthropic-v2"].usage_variance["input_uncached_tokens"] == -1000
+    day1 = cost_buckets(result)["cost_comparison/anthropic/demo_scope_anthropic/2026-09-26"]
+    # the v1 surplus is priced with v1's own rates; the v2 surplus has no local price, so the
+    # whole gap stays a hypothesis instead of evidence and the v2 tokens are not priced at all
+    assert day1.explained_adjustments == []
+    gap = next(h for h in day1.hypotheses if h.code == "capture_gap")
+    assert gap.signed_amount_usd == -Decimal(expected["phantom_call_cost_usd"])
+    assert "fixture-anthropic-v2" not in gap.description
+    assert "no usable price" in gap.description
+    assert day1.unexplained_delta_usd == day1.signed_variance_usd
+
+
+def test_surplus_in_non_dedicated_scope_is_a_hypothesis(
+    demo_storage: Storage, tmp_path: Path
+) -> None:
+    """G05: without a dedicated scope a provider-side surplus may be other traffic."""
+
+    expected = load_expected_metrics()
+    import_rows(
+        demo_storage,
+        tmp_path,
+        name="snap_shared_scope",
+        record_kind="provider_usage",
+        grain="1d/model,workspace_id",
+        rows=[usage_row("v1", D1, "fixture-anthropic-v1", ANTHROPIC_DAY1_USAGE)],
+        window=(D1, D1 + DAY),
+        fetched_at=D1 + 5 * DAY,
+        dedicated=None,
+    )
+    result = reconcile(demo_storage, "demo-support-v1", WINDOW, now_ms=6)
+    day1 = cost_buckets(result)["cost_comparison/anthropic/demo_scope_anthropic/2026-09-26"]
+    assert day1.explained_adjustments == []
+    gap = next(h for h in day1.hypotheses if h.code == "capture_gap")
+    assert gap.evidence_backed is False
+    assert gap.signed_amount_usd == -Decimal(expected["phantom_call_cost_usd"])
+    assert "other_traffic_possible" in day1.reasons and "unexplained" in day1.reasons
+    usage_day1 = anthropic_usage_day1(result)["fixture-anthropic-v1"]
+    assert "provider_exceeds_local" in usage_day1.reasons
+    assert "capture_gap" not in usage_day1.reasons
+    # the cost snapshot still declares a dedicated scope, but the usage evidence does not:
+    # the day counts as dedicated only when every snapshot that feeds it says so
+    assert day1.status is ReconciliationStatus.variance

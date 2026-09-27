@@ -132,6 +132,7 @@ def run_billing_sync(
     scope_id: str | None,
     scope_filter: list[str] | None,
     now_ms: int,
+    dedicated_scope: bool = False,
 ) -> SyncResult:
     import os
 
@@ -164,6 +165,7 @@ def run_billing_sync(
             scope_id=scope_id or prov.value,
             now_ms=now_ms,
             scope_filter=scope_filter,
+            dedicated_scope=dedicated_scope,
         )
 
 
@@ -208,6 +210,7 @@ def run_report(
     now_ms: int,
     dataset_id: str | None,
     monthly_requests: int | None,
+    allow_stale: bool = False,
 ) -> tuple[ReportPaths, ReportManifest]:
     workspace = Workspace(workspace_path)
     manifest = workspace.load_manifest()
@@ -223,6 +226,8 @@ def run_report(
             now_ms=now_ms,
             workspace_id=manifest.workspace_id,
             monthly_requests=monthly_requests,
+            workspace_root=workspace.root,
+            allow_stale=allow_stale,
         )
         return write_report(report, out, now_ms=now_ms, catalog_hash=pricing.catalog_hash)
 
@@ -328,7 +333,11 @@ def run_demo(out_dir: Path, *, now_ms: int) -> DemoResult:
         stages.append("reconciled")
 
         report = build_report(
-            storage, DEMO_DATASET_ID, now_ms=now_ms, workspace_id=DEMO_WORKSPACE_ID
+            storage,
+            DEMO_DATASET_ID,
+            now_ms=now_ms,
+            workspace_id=DEMO_WORKSPACE_ID,
+            workspace_root=workspace.root,
         )
         paths, _report_manifest = write_report(
             report,

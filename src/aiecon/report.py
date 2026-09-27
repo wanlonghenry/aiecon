@@ -1,4 +1,12 @@
-"""Build the Report model and render JSON + self-contained HTML (PLAN.md §14)."""
+"""Build the Report model and render JSON + self-contained HTML (PLAN.md §14).
+
+A report is only as current as the runs it selects. Before rendering, the active pricing run
+is checked against the calls now in the dataset and the active reconcile run against the
+pricing run and the provider snapshots now on file; a mismatch is refused unless the caller
+explicitly allows a stale render, which is then banner-marked and listed in the identity
+section. Input hashes are keyed by workspace-relative paths so two files with the same name in
+different folders never collapse into one row, and only this dataset's inputs are listed.
+"""
 
 from __future__ import annotations
 
@@ -25,12 +33,17 @@ from aiecon.detectors import (
 )
 from aiecon.detectors.summary import outcome_economics
 from aiecon.pricing.catalog import CatalogIndex
-from aiecon.pricing.run import load_run_catalog
-from aiecon.reconcile import ReconcileRunManifest, day_label, shareable_line
+from aiecon.pricing.run import calls_hash, load_run_catalog
+from aiecon.reconcile import (
+    ReconcileRunManifest,
+    day_label,
+    effective_provider_records,
+    shareable_line,
+)
 from aiecon.spec.call import UsageCompleteness
 from aiecon.spec.common import SCHEMA_VERSION, TimeWindow
 from aiecon.spec.finding import ContextRecommendation
-from aiecon.spec.pricing import LineItemStatus
+from aiecon.spec.pricing import LineItemStatus, PricingRunManifest
 from aiecon.spec.reconcile import ComparisonKind
 from aiecon.spec.report import (
     ContextSection,
@@ -46,7 +59,7 @@ from aiecon.spec.report import (
     UsageCoverageSection,
     WasteSection,
 )
-from aiecon.storage import Storage
+from aiecon.storage import Storage, WorkspaceError
 
 TWELVE = Decimal("1.000000000000")
 
@@ -73,6 +86,60 @@ def _git_commit() -> str | None:
     return commit if out.returncode == 0 and len(commit) == 40 else None
 
 
+# ------------------------------------------------------------------ staleness
+def stale_inputs(
+    storage: Storage,
+    dataset_id: str,
+    pricing: PricingRunManifest | None,
+    recon_manifest: ReconcileRunManifest | None,
+) -> list[str]:
+    """Why the selected runs no longer describe the workspace; empty when they do.
+
+    * pricing: the priced call set (count and content hash) differs from the dataset now
+    * reconcile: it was computed against another pricing run, or the snapshots that would be
+      selected for its window today differ from the ones it used
+    """
+
+    stale: list[str] = []
+    if pricing is not None:
+        count, digest = calls_hash(storage, dataset_id)
+        if count != pricing.call_count or digest != pricing.calls_hash:
+            stale.append(
+                f"pricing run {pricing.pricing_run_id} priced {pricing.call_count} calls but the "
+                f"dataset now holds {count} with different content; run estimate again"
+            )
+    if recon_manifest is not None:
+        active_pricing = pricing.pricing_run_id if pricing else None
+        if recon_manifest.pricing_run_id != active_pricing:
+            stale.append(
+                f"reconcile run {recon_manifest.reconcile_run_id} used pricing run "
+                f"{recon_manifest.pricing_run_id or 'none'}, the active one is "
+                f"{active_pricing or 'none'}; run reconcile again"
+            )
+        effective = effective_provider_records(
+            storage, data_kind=recon_manifest.data_kind, window=recon_manifest.window
+        )
+        if effective.snapshot_ids != list(recon_manifest.provider_snapshot_ids):
+            stale.append(
+                f"provider snapshots changed since reconcile run "
+                f"{recon_manifest.reconcile_run_id}; run reconcile again"
+            )
+    return stale
+
+
+def _display_path(path_text: str, root: Path | None) -> str:
+    """Workspace-relative POSIX path when the file is inside the workspace, else its tail."""
+
+    path = Path(path_text)
+    if root is not None:
+        try:
+            return path.resolve().relative_to(Path(root).resolve()).as_posix()
+        except (ValueError, OSError):
+            pass
+    parts = path.parts[-2:] if len(path.parts) >= 2 else path.parts
+    return "/".join(parts)
+
+
 # ------------------------------------------------------------------- building
 def build_report(
     storage: Storage,
@@ -82,6 +149,8 @@ def build_report(
     workspace_id: str | None = None,
     monthly_requests: int | None = None,
     validation_status: list[str] | None = None,
+    workspace_root: Path | None = None,
+    allow_stale: bool = False,
 ) -> Report:
     inputs = load_inputs(storage, dataset_id)
     calls = inputs.calls
@@ -91,6 +160,15 @@ def build_report(
     pricing = storage.active_pricing_run(dataset_id)
     catalog = load_run_catalog(storage, pricing.pricing_run_id) if pricing else None
     index = CatalogIndex(catalog) if catalog else None
+    recon_run = storage.active_run("reconcile", dataset_id)
+    recon_manifest = ReconcileRunManifest.model_validate_json(recon_run[1]) if recon_run else None
+
+    stale = stale_inputs(storage, dataset_id, pricing, recon_manifest)
+    if stale and not allow_stale:
+        raise WorkspaceError(
+            "report inputs are stale: " + " | ".join(stale) + " (or pass --allow-stale to "
+            "render anyway with a STALE INPUTS banner)"
+        )
 
     starts = [c.started_at_ms for c in calls if c.started_at_ms is not None]
     ends = [c.ended_at_ms or c.started_at_ms or 0 for c in calls]
@@ -138,9 +216,7 @@ def build_report(
     ]
 
     # ------------------------------------------------------------ reconciliation
-    recon_run = storage.active_run("reconcile", dataset_id)
     buckets = storage.list_buckets(recon_run[0]) if recon_run else []
-    recon_manifest = ReconcileRunManifest.model_validate_json(recon_run[1]) if recon_run else None
     cost_buckets = [b for b in buckets if b.comparison_kind is ComparisonKind.cost_comparison]
     usage_buckets = [b for b in buckets if b.comparison_kind is ComparisonKind.usage_comparison]
     reconciliation = ReconciliationSection(
@@ -222,12 +298,25 @@ def build_report(
 
     # --------------------------------------------------------------- limitations
     ingest_rows = storage.query(
-        "SELECT file_path, file_sha256 FROM meta_ingest_files ORDER BY file_path"
+        "SELECT file_path, file_sha256 FROM meta_ingest_files WHERE dataset_id = ? "
+        "ORDER BY file_path",
+        [dataset_id],
     )
-    input_hashes = {Path(p).name: h for p, h in ingest_rows}
-    snapshots = storage.list_snapshots()
+    input_hashes: dict[str, str] = {}
+    for file_path, digest in ingest_rows:
+        key = _display_path(file_path, workspace_root)
+        if key in input_hashes and input_hashes[key] != digest:
+            key = Path(file_path).as_posix()  # same tail, different file: keep both rows
+        input_hashes[key] = digest
+    snapshots = [s for s in storage.list_snapshots() if s.data_kind is data_kind]
     for snap in snapshots:
-        input_hashes[snap.snapshot_id] = snap.source_hash
+        input_hashes[f"snapshot:{snap.snapshot_id}"] = snap.source_hash
+    used_snapshot_ids = (
+        list(recon_manifest.provider_snapshot_ids)
+        if recon_manifest
+        else [s.snapshot_id for s in snapshots]
+    )
+    used_snapshots = [s for s in snapshots if s.snapshot_id in set(used_snapshot_ids)]
     price_sources = sorted({r.source_url for r in catalog.records}) if catalog else []
     notes = [
         "Estimates are provider-reported usage x catalog prices (evidence class B); they are "
@@ -235,7 +324,11 @@ def build_report(
         "Provider-reported cost is not an invoice; settled amounts appear only when a "
         "settlement file was imported.",
         "Joint savings across findings are not computed; only the best single action is shown.",
+        "Context-economics savings are incremental to the cache usage already observed and are "
+        "not additive across groups.",
     ]
+    if stale:
+        notes.insert(0, "STALE INPUTS: " + " | ".join(stale))
     if data_kind.value == "synthetic":
         notes.insert(
             0, "All data in this report is synthetic and demonstrates the computation path only."
@@ -248,7 +341,7 @@ def build_report(
         ],
         unpriced_reasons=dict(sorted(unpriced_reasons.items())),
         unsupported_charges_usd=reconciliation.total_unmodeled_charges_usd,
-        provisional_snapshots=sum(1 for s in snapshots if s.finality.value == "provisional"),
+        provisional_snapshots=sum(1 for s in used_snapshots if s.finality.value == "provisional"),
         input_file_hashes=input_hashes,
         price_sources=price_sources,
         notes=notes,
@@ -267,13 +360,14 @@ def build_report(
         catalog_version=pricing.catalog_version if pricing else None,
         catalog_kind=pricing.catalog_kind if pricing else None,
         reconcile_run_id=recon_run[0] if recon_run else None,
-        provider_snapshot_ids=[s.snapshot_id for s in snapshots],
+        provider_snapshot_ids=used_snapshot_ids,
         data_sources=sorted(
             {e.split("_")[0] for c in calls for e in [c.normalizer_version]} and {"envelope_jsonl"}
         ),
-        finality_counts=dict(Counter(s.finality.value for s in snapshots)),
+        finality_counts=dict(Counter(s.finality.value for s in used_snapshots)),
         call_count=len(calls),
         outcome_count=len(inputs.outcomes),
+        stale_inputs=stale,
     )
     return Report(
         identity=identity,

@@ -35,6 +35,7 @@ def index_with(
     *,
     pw1: str | None = None,
     policies: tuple[str, ...] = ("ephemeral_5m",),
+    min_prefix: int | None = None,
 ) -> CatalogIndex:
     def rec(resource: str, price: str) -> dict:
         return {
@@ -72,6 +73,7 @@ def index_with(
                     "cache_write_tiers": ["input_cache_write_5m"]
                     + (["input_cache_write_1h"] if pw1 else []),
                     "supported_cache_policies": list(policies),
+                    "min_cacheable_prefix_tokens": min_prefix,
                     "source_url": "synthetic://test",
                     "retrieved_at": "2026-09-26",
                 }
@@ -253,3 +255,42 @@ def test_demo_groups_match_expected_metrics(tmp_path: Path) -> None:
     )
     assert result.calls_with_prefix_evidence == 82
     assert result.calls_without_prefix_evidence == 313 - 82
+
+
+def test_savings_are_incremental_to_observed_cache_usage() -> None:
+    """G02: a prefix that is already partly served from cache saves less than "no cache" says."""
+
+    index = index_with("1000", "1250", "100")  # per million tokens
+    calls = [call(1, T0), call(2, T0 + MINUTE, read=10_000), call(3, T0 + 2 * MINUTE)]
+    group = analyze(calls, index, dataset_id="d").groups[0]
+    # no cache: 3 x 10_000 x 0.001 = 30; today: 20_000 x 0.001 + 10_000 x 0.0001 = 21
+    # scenario: one write 10_000 x 0.00125 + two reads 20_000 x 0.0001 = 14.5
+    assert group.modeled_no_cache_cost_usd == Decimal("30")
+    assert group.modeled_baseline_cost_usd == Decimal("21")
+    assert group.modeled_cache_cost_usd == Decimal("14.5")
+    assert group.modeled_savings_usd == Decimal("6.5")  # not 30 - 14.5 = 15.5
+    assert group.recommendation is ContextRecommendation.beneficial
+    assert any(c.startswith("savings are incremental") for c in group.caveats)
+    assert any("not additive" in c for c in group.caveats)
+    # without observed cache usage the baseline is the no-cache cost
+    plain = analyze([call(1, T0), call(2, T0 + MINUTE)], index, dataset_id="d").groups[0]
+    assert plain.modeled_baseline_cost_usd == plain.modeled_no_cache_cost_usd
+
+
+def test_prefix_below_minimum_cacheable_length_gets_no_scenario() -> None:
+    """G02: the provider would not cache a prefix shorter than the model's minimum."""
+
+    index = index_with("1000", "1250", "100", min_prefix=4096)
+    calls = [call(i, T0 + i * MINUTE, prefix=1500, prefix_tokens=1500) for i in range(1, 6)]
+    group = analyze(calls, index, dataset_id="d").groups[0]
+    assert group.recommendation is ContextRecommendation.not_beneficial
+    assert group.modeled_savings_usd is None and group.scenario_policy is None
+    assert group.candidate_repeated_prefix_tokens == 0
+    assert any("minimum cacheable prefix (4096)" in c for c in group.caveats)
+    # a prefix at or above the minimum is modeled as usual
+    ok = analyze(
+        [call(i, T0 + i * MINUTE, prefix=4096, prefix_tokens=4096) for i in range(1, 6)],
+        index,
+        dataset_id="d",
+    ).groups[0]
+    assert ok.modeled_savings_usd is not None
