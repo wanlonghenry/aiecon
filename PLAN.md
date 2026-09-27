@@ -792,7 +792,7 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
-| T5.1 | `report.py`、Jinja2 模板、JSON schema | §14 全部报告区域完成；JSON/HTML 数字来自同一 Report model；空值不冒充零 |
+| T5.1 | done | all 8 report sections from one Report model; JSON decimals as strings; nulls render Unknown/Not comparable; no script/link/url(); monthly projection labeled; manifest with hashes; 4 report tests |
 | T5.2 | 完整 `demo`、README quickstart、包数据配置 | 新目录 fresh clone 后执行 quickstart 成功；安装 wheel 后离开 repo 也可运行 demo |
 | T5.3 | sample report、demo script、live report | 3 分钟可演示；样例只用 synthetic；实际 L1 结果按供应商分别记录覆盖范围 |
 
