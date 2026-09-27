@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint, tests, demo, package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.19"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --locked
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Unit, integration and offline e2e tests (never live)
+        run: uv run pytest -q -m 'not live'
+      - name: Offline synthetic demo
+        run: uv run aiecon demo --out .aiecon/demo
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Install the wheel in a clean venv and run the demo from another directory
+        run: |
+          uv venv /tmp/wheelenv --python 3.12
+          uv pip install --python /tmp/wheelenv/bin/python dist/aiecon-*.whl
+          cd /tmp
+          HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9 \
+            /tmp/wheelenv/bin/aiecon demo --out /tmp/demo-from-wheel
+          /tmp/wheelenv/bin/aiecon doctor --mode offline
+          /tmp/wheelenv/bin/aiecon schema export --out /tmp/schemas
+      - name: Upload the synthetic demo report
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: synthetic-demo-report
+          path: |
+            .aiecon/demo/report.html
+            .aiecon/demo/report.json
+            .aiecon/demo/report-manifest.json
+          if-no-files-found: error
+
+  secret-scan:
+    name: secret scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
