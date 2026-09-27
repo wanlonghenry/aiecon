@@ -17,11 +17,16 @@ from typing import Any
 
 from aiecon import __version__
 from aiecon.billing.importer import ImportResult, import_snapshot
+from aiecon.billing.sync import SyncResult, parse_utc_boundary, run_sync
+from aiecon.config import ADMIN_KEY_ENVS
 from aiecon.ingest import IngestStats, ingest_paths
 from aiecon.pricing.catalog import load_catalog, load_synthetic_catalog
 from aiecon.pricing.run import PricingRunResult, run_pricing
-from aiecon.spec.common import SCHEMA_VERSION, DataKind
+from aiecon.reconcile import DAY_MS, ReconcileResult, reconcile
+from aiecon.report import ReportPaths, build_report, write_report
+from aiecon.spec.common import SCHEMA_VERSION, DataKind, Provider, TimeWindow
 from aiecon.spec.pricing import PriceCatalog
+from aiecon.spec.report import ReportManifest
 from aiecon.storage import Storage, Workspace, WorkspaceError, WorkspaceManifest
 
 DEMO_DATASET_ID = "demo-support-v1"
@@ -110,6 +115,118 @@ def run_billing_import(
         )
 
 
+def _window(start: str, end: str) -> TimeWindow:
+    window = TimeWindow(start_ms=parse_utc_boundary(start), end_ms=parse_utc_boundary(end))
+    if window.end_ms <= window.start_ms:
+        raise WorkspaceError("--end must be after --start")
+    return window
+
+
+# ------------------------------------------------------------------ billing sync
+def run_billing_sync(
+    workspace_path: Path,
+    *,
+    provider: str,
+    start: str,
+    end: str,
+    scope_id: str | None,
+    scope_filter: list[str] | None,
+    now_ms: int,
+) -> SyncResult:
+    import os
+
+    workspace = Workspace(workspace_path)
+    manifest = workspace.load_manifest()
+    if manifest.data_kind is not DataKind.live:
+        raise WorkspaceError("billing sync pulls real provider data; use a live workspace")
+    try:
+        prov = Provider(provider)
+    except ValueError:
+        raise WorkspaceError("--provider must be openai or anthropic") from None
+    env_name = ADMIN_KEY_ENVS.get(prov.value)
+    if env_name is None:
+        raise WorkspaceError(f"billing sync does not support provider {provider}")
+    admin_key = os.environ.get(env_name)  # read once, passed to the poller, never printed
+    if not admin_key:
+        raise WorkspaceError(
+            f"{env_name} is not set; billing sync needs the provider's admin key "
+            "(model API keys cannot read usage or cost reports)"
+        )
+    window = _window(start, end)
+    with workspace.lock(), Storage.open(workspace.db_path) as storage:
+        storage.apply_schema()
+        return run_sync(
+            storage,
+            workspace,
+            provider=prov,
+            window=window,
+            admin_key=admin_key,
+            scope_id=scope_id or prov.value,
+            now_ms=now_ms,
+            scope_filter=scope_filter,
+        )
+
+
+# --------------------------------------------------------------------- reconcile
+def run_reconcile(
+    workspace_path: Path,
+    *,
+    start: str,
+    end: str,
+    dataset_id: str | None,
+    now_ms: int,
+) -> ReconcileResult:
+    workspace = Workspace(workspace_path)
+    workspace.load_manifest()
+    window = _window(start, end)
+    with workspace.lock(), Storage.open(workspace.db_path) as storage:
+        storage.apply_schema()
+        dataset = resolve_dataset_id(storage, dataset_id)
+        return reconcile(storage, dataset, window, now_ms=now_ms)
+
+
+def dataset_day_window(storage: Storage, dataset_id: str) -> TimeWindow:
+    """Whole UTC days covering every call of the dataset."""
+
+    first, last = storage.query(
+        "SELECT MIN(started_at_ms), MAX(COALESCE(ended_at_ms, started_at_ms)) FROM calls "
+        "WHERE dataset_id = ?",
+        [dataset_id],
+    )[0]
+    if first is None:
+        raise WorkspaceError("no calls to reconcile")
+    return TimeWindow(
+        start_ms=(int(first) // DAY_MS) * DAY_MS, end_ms=(int(last) // DAY_MS + 1) * DAY_MS
+    )
+
+
+# ------------------------------------------------------------------------ report
+def run_report(
+    workspace_path: Path,
+    *,
+    out: Path,
+    now_ms: int,
+    dataset_id: str | None,
+    monthly_requests: int | None,
+) -> tuple[ReportPaths, ReportManifest]:
+    workspace = Workspace(workspace_path)
+    manifest = workspace.load_manifest()
+    with workspace.lock(), Storage.open(workspace.db_path) as storage:
+        storage.apply_schema()
+        dataset = resolve_dataset_id(storage, dataset_id)
+        pricing = storage.active_pricing_run(dataset)
+        if pricing is None:
+            raise WorkspaceError("no pricing run for this dataset; run estimate first")
+        report = build_report(
+            storage,
+            dataset,
+            now_ms=now_ms,
+            workspace_id=manifest.workspace_id,
+            monthly_requests=monthly_requests,
+        )
+        return write_report(report, out, now_ms=now_ms, catalog_hash=pricing.catalog_hash)
+
+
 # -------------------------------------------------------------------------- demo
 @dataclass
 class DemoResult:
@@ -121,6 +238,7 @@ class DemoResult:
     expected_outcomes: int
     pricing: PricingRunResult | None = None
     imports: list[ImportResult] = field(default_factory=list)
+    reconciliation: ReconcileResult | None = None
     stages: list[str] = field(default_factory=list)
     outputs: dict[str, Path] = field(default_factory=dict)
 
@@ -204,6 +322,22 @@ def run_demo(out_dir: Path, *, now_ms: int) -> DemoResult:
             )
         stages.append("provider_fixtures_imported")
 
+        recon = reconcile(
+            storage, DEMO_DATASET_ID, dataset_day_window(storage, DEMO_DATASET_ID), now_ms=now_ms
+        )
+        stages.append("reconciled")
+
+        report = build_report(
+            storage, DEMO_DATASET_ID, now_ms=now_ms, workspace_id=DEMO_WORKSPACE_ID
+        )
+        paths, _report_manifest = write_report(
+            report,
+            workspace.root / "report.html",
+            now_ms=now_ms,
+            catalog_hash=pricing.manifest.catalog_hash,
+        )
+        stages.append("reported")
+
     return DemoResult(
         workspace=workspace.root,
         ingest=stats,
@@ -213,8 +347,14 @@ def run_demo(out_dir: Path, *, now_ms: int) -> DemoResult:
         expected_outcomes=int(expected["runs"]),
         pricing=pricing,
         imports=imports,
+        reconciliation=recon,
         stages=stages,
-        outputs={"database": workspace.db_path},
+        outputs={
+            "report_html": paths.html,
+            "report_json": paths.json,
+            "report_manifest": paths.manifest,
+            "database": workspace.db_path,
+        },
     )
 
 

@@ -11,6 +11,7 @@ from typing import Annotated, Any
 import typer
 
 from aiecon import __version__
+from aiecon.billing.http import ProviderReportError
 from aiecon.billing.importer import BillingImportError
 from aiecon.config import (
     ADMIN_KEY_ENVS,
@@ -81,6 +82,9 @@ def _guard(fn: Callable[[], int]) -> None:
     except (BillingImportError, CatalogError) as exc:
         typer.echo(f"data contract error: {exc}", err=True)
         raise typer.Exit(EXIT_CONTRACT) from None
+    except ProviderReportError as exc:
+        typer.echo(f"provider report error: {exc}", err=True)
+        raise typer.Exit(EXIT_FAILURE) from None
     except typer.Exit:
         raise
     except Exception as exc:  # noqa: BLE001 - CLI boundary
@@ -278,6 +282,141 @@ def billing_import(
     _guard(run)
 
 
+@billing_app.command("sync")
+def billing_sync(
+    ctx: typer.Context,
+    provider: Annotated[str, typer.Option("--provider", help="openai or anthropic")],
+    start: Annotated[str, typer.Option("--start", help="UTC date (inclusive) or ISO datetime")],
+    end: Annotated[str, typer.Option("--end", help="UTC date (exclusive) or ISO datetime")],
+    scope_id: Annotated[
+        str | None,
+        typer.Option(
+            "--scope-id", help="Local scope id for the pulled data (default: provider name)"
+        ),
+    ] = None,
+    scope_filter: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--filter", help="Provider project/workspace id to restrict the pull (repeatable)"
+        ),
+    ] = None,
+) -> None:
+    """Pull complete usage and cost snapshots from the provider report API (read-only)."""
+
+    def run() -> int:
+        from aiecon.pipeline import run_billing_sync
+
+        result = run_billing_sync(
+            _workspace(ctx),
+            provider=provider,
+            start=start,
+            end=end,
+            scope_id=scope_id,
+            scope_filter=scope_filter,
+            now_ms=now_ms(),
+        )
+        _echo_kv(
+            {
+                "provider": result.provider.value,
+                "window_utc": f"{result.window.start_ms} .. {result.window.end_ms} (ms)",
+                "snapshots": ", ".join(
+                    f"{i.snapshot_id}:{i.record_count}"
+                    + (" (unchanged)" if i.skipped_same_hash else "")
+                    for i in result.imports
+                ),
+                "staged_under": str(result.staged_dir),
+            }
+        )
+        return EXIT_OK
+
+    _guard(run)
+
+
+@app.command()
+def reconcile(
+    ctx: typer.Context,
+    start: Annotated[str, typer.Option("--start", help="UTC date (inclusive) or ISO datetime")],
+    end: Annotated[str, typer.Option("--end", help="UTC date (exclusive) or ISO datetime")],
+    dataset_id: DatasetOpt = None,
+) -> None:
+    """Compare local usage and estimates with provider reports at the provider's grain."""
+
+    def run() -> int:
+        from aiecon.pipeline import run_reconcile
+
+        result = run_reconcile(
+            _workspace(ctx), start=start, end=end, dataset_id=dataset_id, now_ms=now_ms()
+        )
+        manifest = result.manifest
+        typer.echo(f"reconcile_run_id {manifest.reconcile_run_id}  buckets {manifest.bucket_count}")
+        header = (
+            f"{'kind':18s} {'provider':10s} {'scope':24s} {'day':10s} {'model':28s} "
+            f"{'E (usd)':>14s} {'B (usd)':>14s} {'variance':>12s} {'pct':>8s} status / reasons"
+        )
+        typer.echo(header)
+        for b in result.buckets:
+            e = "-" if b.local_estimate_usd is None else format(b.local_estimate_usd, ".6f")
+            bv = "-" if b.provider_cost_usd is None else format(b.provider_cost_usd, ".6f")
+            var = "-" if b.signed_variance_usd is None else format(b.signed_variance_usd, "+.6f")
+            pct = "-" if b.variance_pct is None else format(b.variance_pct, "+.2f")
+            if b.comparison_kind.value == "usage_comparison":
+                e = bv = var = pct = "-"
+            reasons = ", ".join(b.reasons)
+            typer.echo(
+                f"{b.comparison_kind.value:18s} {b.provider.value:10s} {b.scope_id[:24]:24s} "
+                f"{b.dimensions.get('day', ''):10s} {(b.dimensions.get('model') or '')[:28]:28s} "
+                f"{e:>14s} {bv:>14s} {var:>12s} {pct:>8s} {b.status.value}"
+                + (f" / {reasons}" if reasons else "")
+            )
+        typer.echo("")
+        for line in result.summary_lines:
+            typer.echo(line)
+        return EXIT_OK
+
+    _guard(run)
+
+
+@app.command()
+def report(
+    ctx: typer.Context,
+    out: Annotated[
+        Path, typer.Option("--out", help="HTML output path; JSON and manifest go next to it")
+    ],
+    monthly_requests: Annotated[
+        int | None,
+        typer.Option("--monthly-requests", help="Add a clearly labeled monthly projected scenario"),
+    ] = None,
+    dataset_id: DatasetOpt = None,
+) -> None:
+    """Render the single-page HTML report plus JSON and manifest from the selected runs."""
+
+    def run() -> int:
+        from aiecon.pipeline import run_report
+
+        paths, manifest = run_report(
+            _workspace(ctx),
+            out=out,
+            now_ms=now_ms(),
+            dataset_id=dataset_id,
+            monthly_requests=monthly_requests,
+        )
+        _echo_kv(
+            {
+                "report_html": str(paths.html.resolve()),
+                "report_json": str(paths.json.resolve()),
+                "report_manifest": str(paths.manifest.resolve()),
+                "data_kind": manifest.data_kind.value,
+                "pricing_run_id": manifest.pricing_run_id or "-",
+                "reconcile_run_id": manifest.reconcile_run_id or "-",
+            }
+        )
+        if manifest.data_kind.value == "synthetic":
+            typer.echo("SYNTHETIC DATA")
+        return EXIT_OK
+
+    _guard(run)
+
+
 @app.command()
 def demo(
     out: Annotated[Path, typer.Option("--out", help="Demo workspace directory")] = Path(
@@ -311,6 +450,11 @@ def demo(
                 ),
             }
         )
+        if result.reconciliation is not None:
+            typer.echo("")
+            for line in result.reconciliation.summary_lines:
+                typer.echo(line)
+            typer.echo("")
         for name, path in result.outputs.items():
             typer.echo(f"{name}: {path.resolve()}")
         typer.echo(DEMO_BANNER)

@@ -3,18 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>aiecon report</title>
+<title>aiecon report · {{ report.identity.dataset_id }}</title>
 <style>
   :root { color-scheme: light dark; --fg: #1b1b1b; --bg: #ffffff; --muted: #5f6368; --line: #d9dde3;
-          --banner: #7a4b00; --banner-bg: #fff4d6; }
+          --banner: #7a4b00; --banner-bg: #fff4d6; --accent: #2b5fb3; --bar: #7aa2e3; --ok: #2b7a3d; --warn: #a1541b; }
   @media (prefers-color-scheme: dark) {
-    :root { --fg: #e8e8e8; --bg: #121417; --muted: #a0a6ad; --line: #2b3038; --banner: #ffd479; --banner-bg: #3a2a00; }
+    :root { --fg: #e8e8e8; --bg: #121417; --muted: #a0a6ad; --line: #2b3038; --banner: #ffd479;
+            --banner-bg: #3a2a00; --accent: #8fb3ff; --bar: #4d7ac9; --ok: #6fcf85; --warn: #f0a25c; }
   }
-  body { margin: 0; padding: 0 16px 48px; font: 15px/1.45 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0 16px 48px; font: 15px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+         color: var(--fg); background: var(--bg); }
   main { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 20px 0 4px; }
+  h2 { font-size: 1.15rem; margin: 32px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+  h2 small { color: var(--muted); font-weight: normal; font-size: 0.85rem; }
+  p.lead { color: var(--muted); margin: 0 0 12px; }
   .banner { margin: 16px 0; padding: 10px 14px; border: 1px solid var(--banner); background: var(--banner-bg);
             color: var(--banner); font-weight: 600; border-radius: 6px; }
-  code { word-break: break-all; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 12px 0; }
+  .tile { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  .tile .k { color: var(--muted); font-size: 0.8rem; }
+  .tile .v { font-size: 1.15rem; font-weight: 600; word-break: break-word; }
+  .tile .s { color: var(--muted); font-size: 0.78rem; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  code { font-size: 0.82rem; word-break: break-all; }
+  .id { word-break: break-all; color: var(--muted); font-size: 0.8rem; }
+  .status { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.78rem; border: 1px solid var(--line); }
+  .status.matched { color: var(--ok); border-color: var(--ok); }
+  .status.variance, .status.provisional, .status.scope_mismatch, .status.unpriced { color: var(--warn); border-color: var(--warn); }
+  details { margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .lines li { margin: 4px 0; }
+  .bar { display: grid; grid-template-columns: minmax(120px, 34%) 1fr 110px; gap: 8px; align-items: center; margin: 4px 0; font-size: 0.85rem; }
+  .bar .track { height: 12px; background: var(--line); border-radius: 6px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--bar); }
+  ul { padding-left: 20px; }
 </style>
 </head>
 <body>
@@ -22,8 +51,171 @@
   {% if report.identity.data_kind == "synthetic" %}
   <div class="banner">SYNTHETIC DEMO — every number on this page comes from generated fixtures, not from a real account.</div>
   {% endif %}
-  <h1>aiecon report</h1>
-  <p>Report rendering lands with task T5.1. Dataset: <code>{{ report.identity.dataset_id }}</code>.</p>
+  <h1>aiecon cost report</h1>
+  <p class="lead">Dataset <code>{{ report.identity.dataset_id }}</code> · generated {{ report.identity.generated_at_ms | ts }} · aiecon {{ report.identity.aiecon_version }}</p>
+
+  <h2>1. Data identity</h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Data kind</div><div class="v">{{ report.identity.data_kind }}</div></div>
+    <div class="tile"><div class="k">Call window (UTC)</div>
+      <div class="v">{% if report.identity.window %}{{ report.identity.window.start_ms | day }} → {{ report.identity.window.end_ms | day }}{% else %}Unknown{% endif %}</div>
+      <div class="s">half-open; call start times</div></div>
+    <div class="tile"><div class="k">Calls / outcomes</div><div class="v">{{ report.identity.call_count | num }} / {{ report.identity.outcome_count | num }}</div></div>
+    <div class="tile"><div class="k">Pricing run</div><div class="v id">{{ report.identity.pricing_run_id or "none" }}</div>
+      <div class="s">catalog {{ report.identity.catalog_version or "—" }} ({{ report.identity.catalog_kind or "—" }})</div></div>
+    <div class="tile"><div class="k">Provider snapshots</div><div class="v">{{ report.identity.provider_snapshot_ids | length }}</div>
+      <div class="s">{% for k, v in report.identity.finality_counts.items() %}{{ k }}: {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not report.identity.finality_counts %}none{% endif %}</div></div>
+  </div>
+
+  <h2>2. Outcome economics <small>{{ report.outcome_economics.cohort_definition }}</small></h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Terminal runs</div><div class="v">{{ report.outcome_economics.cohort_runs | num }}</div>
+      <div class="s">{{ report.outcome_economics.succeeded | num }} succeeded · {{ report.outcome_economics.failed | num }} failed · {{ report.outcome_economics.abandoned | num }} abandoned</div></div>
+    <div class="tile"><div class="k">Pending / unknown · without outcome · unattributed calls</div>
+      <div class="v">{{ report.outcome_economics.pending_or_unknown_runs | num }} · {{ report.outcome_economics.runs_without_outcome | num }} · {{ report.outcome_economics.unattributed_calls | num }}</div></div>
+    <div class="tile"><div class="k">Cohort known cost</div><div class="v">{{ report.outcome_economics.cohort_known_cost_usd | usd }}</div>
+      <div class="s">{{ report.outcome_economics.cohort_call_count | num }} calls · {{ report.outcome_economics.unknown_cost_calls | num }} with unknown cost</div></div>
+    <div class="tile"><div class="k">Cost per successful outcome</div><div class="v">{{ report.outcome_economics.cost_per_successful_outcome_usd | usd }}</div>
+      <div class="s">{{ report.outcome_economics.note }}{% if report.outcome_economics.is_lower_bound %} (known-cost lower bound){% endif %}</div></div>
+    <div class="tile"><div class="k">Successful-runs-only cost per success</div><div class="v">{{ report.outcome_economics.successful_runs_only_per_success_usd | usd }}</div>
+      <div class="s">different label, different denominator basis</div></div>
+  </div>
+
+  <h3>Where the cost went</h3>
+  {% for bar in bars %}
+  <div class="bar"><span class="id">{{ bar.label }}</span><div class="track"><div class="fill" style="width: {{ bar.width }}%"></div></div><span class="num">{{ bar.value | usd }}</span></div>
+  {% endfor %}
+  <div class="wrap"><table>
+    <thead><tr><th>workflow</th><th>node</th><th>provider</th><th>model</th><th class="num">calls</th><th class="num">unpriced</th><th class="num">input tokens</th><th class="num">output tokens</th><th class="num">known cost</th></tr></thead>
+    <tbody>
+    {% for g in report.cost_breakdown %}
+    <tr><td>{{ g.workflow_id or "unattributed" }}</td><td>{{ g.node_id or "—" }}</td><td>{{ g.provider }}</td><td><code>{{ g.model }}</code></td>
+        <td class="num">{{ g.calls | num }}</td><td class="num">{{ g.unpriced_calls | num }}</td><td class="num">{{ g.input_total_tokens | num }}</td><td class="num">{{ g.output_tokens | num }}</td><td class="num">{{ g.known_cost_usd | usd }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+
+  <h2>3. Monetary reconciliation <small>E = local estimate, B = provider-reported cost, same scope and UTC day</small></h2>
+  {% if not report.monetary_reconciliation.ran %}
+  <p class="muted">{{ report.monetary_reconciliation.note }}</p>
+  {% else %}
+  <div class="tiles">
+    <div class="tile"><div class="k">Σ E (local estimate)</div><div class="v">{{ report.monetary_reconciliation.total_local_estimate_usd | usd }}</div></div>
+    <div class="tile"><div class="k">Σ B (provider-reported)</div><div class="v">{{ report.monetary_reconciliation.total_provider_cost_usd | usd }}</div><div class="s">modeled categories only</div></div>
+    <div class="tile"><div class="k">Unmodeled provider charges</div><div class="v">{{ report.monetary_reconciliation.total_unmodeled_charges_usd | usd }}</div><div class="s">listed separately, never compared</div></div>
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>provider</th><th>scope</th><th>day</th><th>grain</th><th class="num">E</th><th class="num">B</th><th class="num">E − B</th><th class="num">%</th><th class="num">explained</th><th class="num">unexplained</th><th>status</th><th>reasons</th></tr></thead>
+    <tbody>
+    {% for b in report.monetary_reconciliation.buckets %}
+    <tr><td>{{ b.provider }}</td><td class="id">{{ b.scope_id }}</td><td>{{ b.dimensions.day }}</td><td class="id">{{ b.grain }}</td>
+        <td class="num">{{ b.local_estimate_usd | usd }}</td><td class="num">{{ b.provider_cost_usd | usd }}</td>
+        <td class="num">{{ b.signed_variance_usd | usd }}</td><td class="num">{{ b.variance_pct | pct }}</td>
+        <td class="num">{% if b.explained_adjustments %}{% set ns = namespace(total=0) %}{% for a in b.explained_adjustments %}{{ a.signed_amount_usd | usd }}{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}—{% endif %}</td>
+        <td class="num">{{ b.unexplained_delta_usd | usd }}</td>
+        <td><span class="status {{ b.status }}">{{ b.status }}</span></td><td class="id">{{ b.reasons | join(", ") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <ul class="lines">
+    {% for line in report.monetary_reconciliation.summary_lines %}<li>{{ line }}</li>{% endfor %}
+  </ul>
+  {% for b in report.monetary_reconciliation.buckets %}{% if b.explained_adjustments or b.hypotheses %}
+  <details><summary>Evidence · {{ b.provider }} · {{ b.dimensions.day }}</summary>
+    {% for a in b.explained_adjustments %}<p><strong>{{ a.code }}</strong> {{ a.signed_amount_usd | usd }} (evidence-backed) — {{ a.description }}<br><span class="id">{{ a.evidence_refs | join(", ") }}</span></p>{% endfor %}
+    {% for h in b.hypotheses %}<p><strong>{{ h.code }}</strong> {{ h.signed_amount_usd | usd }} (hypothesis, not counted) — {{ h.description }}<br><span class="id">{{ h.evidence_refs | join(", ") }}</span></p>{% endfor %}
+    <p class="id">provider records: {{ b.provider_record_ids | join(", ") }}</p>
+  </details>
+  {% endif %}{% endfor %}
+  {% endif %}
+
+  <h2>4. Usage coverage <small>provider usage vs local usage</small></h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Calls missing usage</div><div class="v">{{ report.usage_coverage.calls_missing_usage | num }}</div></div>
+    <div class="tile"><div class="k">Calls not fully priced</div><div class="v">{{ report.usage_coverage.calls_unpriced | num }}</div>
+      <div class="s">{% for k, v in report.usage_coverage.unpriced_reasons.items() %}{{ k }}: {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</div></div>
+    <div class="tile"><div class="k">Unmatched scopes</div><div class="v">{{ report.usage_coverage.unmatched_scopes | length }}</div><div class="s id">{{ report.usage_coverage.unmatched_scopes | join(", ") }}</div></div>
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>provider</th><th>scope</th><th>day</th><th>model</th><th class="num">local total in</th><th class="num">provider total in</th><th class="num">local out</th><th class="num">provider out</th><th class="num">Δ uncached</th><th class="num">Δ cache read</th><th class="num">Δ cache write</th><th>status</th></tr></thead>
+    <tbody>
+    {% for b in report.usage_coverage.buckets %}
+    {% set lu = b.local_usage or {} %}{% set pu = b.provider_usage or {} %}{% set uv = b.usage_variance or {} %}
+    <tr><td>{{ b.provider }}</td><td class="id">{{ b.scope_id }}</td><td>{{ b.dimensions.day }}</td><td><code>{{ b.dimensions.model }}</code></td>
+        <td class="num">{{ lu.input_total_tokens | num }}</td><td class="num">{{ pu.input_total_tokens | num }}</td>
+        <td class="num">{{ lu.output_tokens | num }}</td><td class="num">{{ pu.output_tokens | num }}</td>
+        <td class="num">{{ uv.input_uncached_tokens if uv.input_uncached_tokens is not none else "—" }}</td>
+        <td class="num">{{ uv.input_cache_read_tokens if uv.input_cache_read_tokens is not none else "—" }}</td>
+        <td class="num">{{ uv.input_cache_write_tokens if uv.input_cache_write_tokens is not none else "—" }}</td>
+        <td><span class="status {{ b.status }}">{{ b.status }}</span> <span class="id">{{ b.reasons | join(", ") }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+
+  <h2>5. Waste findings <small>{% for k, v in report.waste_findings.by_detector.items() %}{{ k }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</small></h2>
+  {% for f in report.waste_findings.findings %}
+  <details>
+    <summary>{{ f.detector }} · {{ f.observed_cost_usd | usd }} observed{% if not f.observed_cost_complete %} (lower bound){% endif %} · savings {{ f.modeled_savings_usd | usd }} · {{ f.evidence_level }}/{{ f.confidence_class }}</summary>
+    <p>{{ f.summary }}</p>
+    <p><strong>Proposed action:</strong> {{ f.proposed_action }}</p>
+    {% if f.assumptions %}<p><strong>Assumptions:</strong> {{ f.assumptions | join("; ") }}</p>{% endif %}
+    {% if f.caveats %}<p><strong>Caveats:</strong> {{ f.caveats | join("; ") }}</p>{% endif %}
+    <p class="id">finding {{ f.finding_id }} · runs {{ f.affected_run_ids | join(", ") }} · calls {{ f.call_ids | join(", ") }}<br>line items {{ f.line_item_ids | join(", ") }}<br>events {{ f.evidence_event_ids | join(", ") }}</p>
+  </details>
+  {% endfor %}
+  {% if not report.waste_findings.findings %}<p class="muted">No findings.</p>{% endif %}
+
+  <h2>6. Context economics <small>{{ report.context_economics.calls_with_prefix_evidence | num }} calls with prefix evidence · {{ report.context_economics.calls_without_prefix_evidence | num }} without</small></h2>
+  {% if report.context_economics.note %}<p class="muted">{{ report.context_economics.note }}</p>{% endif %}
+  <div class="wrap"><table>
+    <thead><tr><th>scope / model</th><th>prefix</th><th class="num">calls</th><th class="num">prefix tokens</th><th class="num">observed reads</th><th class="num">observed writes</th><th>scenario</th><th class="num">no-cache</th><th class="num">cached</th><th class="num">savings</th><th class="num">break-even</th><th>recommendation</th></tr></thead>
+    <tbody>
+    {% for g in report.context_economics.groups %}
+    <tr><td class="id">{{ g.scope_id }} · {{ g.model_resolved }}{% if g.cache_policy %} · {{ g.cache_policy }}{% endif %}</td><td class="id">{{ g.prefix_fingerprint[:16] }}…</td>
+        <td class="num">{{ g.calls | num }}</td><td class="num">{{ g.prefix_tokens | num }}</td><td class="num">{{ g.observed_cache_read_tokens | num }}</td><td class="num">{{ g.observed_cache_write_tokens | num }}</td>
+        <td>{{ g.scenario_policy or "—" }}{% if g.segments %} ({{ g.segments | length }} segment{{ "s" if g.segments | length != 1 }}){% endif %}</td>
+        <td class="num">{{ g.modeled_no_cache_cost_usd | usd }}</td><td class="num">{{ g.modeled_cache_cost_usd | usd }}</td><td class="num">{{ g.modeled_savings_usd | usd }}</td><td class="num">{{ g.break_even_reuses | num }}</td>
+        <td><span class="status">{{ g.recommendation }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% for g in report.context_economics.groups %}{% if g.assumptions or g.caveats %}
+  <details><summary>Assumptions · {{ g.group_id }}</summary>
+    {% if g.assumptions %}<p><strong>Assumptions:</strong> {{ g.assumptions | join("; ") }}</p>{% endif %}
+    {% if g.caveats %}<p><strong>Caveats:</strong> {{ g.caveats | join("; ") }}</p>{% endif %}
+    <p class="id">supported policies: {{ g.supported_ttl_candidates | join(", ") or "—" }} · calls {{ g.call_ids | join(", ") }}</p>
+  </details>
+  {% endif %}{% endfor %}
+  {% if report.context_economics.projections %}
+  <h3>Projected monthly scenario</h3>
+  {% for p in report.context_economics.projections %}
+  <p><strong>{{ p.projected_savings_usd | usd }}</strong> per month for group <span class="id">{{ p.group_id }}</span> at {{ p.requests_per_month | num }} requests/month (scale ×{{ p.scale_factor }} from {{ p.observed_calls_in_window | num }} observed calls). Assumptions: {{ p.assumptions | join("; ") }}.</p>
+  {% endfor %}
+  {% endif %}
+
+  <h2>7. Summary of opportunities</h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Cost covered by findings (union of line items)</div><div class="v">{{ report.opportunities.unique_flagged_cost_usd | usd }}</div>
+      <div class="s">{{ report.opportunities.unique_flagged_line_items | num }} line items · {{ report.opportunities.unique_flagged_calls | num }} calls · {{ report.opportunities.unknown_cost_flagged_calls | num }} with unknown cost · this is diagnosed cost, not savings</div></div>
+    <div class="tile"><div class="k">Best single-action savings scenario</div><div class="v">{{ report.opportunities.best_single_action_savings_usd | usd }}</div>
+      <div class="s id">{{ report.opportunities.best_single_action_finding_id or "no evidence-complete positive scenario" }}</div></div>
+    <div class="tile"><div class="k">Joint savings across actions</div><div class="v">{{ report.opportunities.joint_savings }}</div></div>
+  </div>
+
+  <h2>8. Limitations and provenance</h2>
+  <ul>
+    {% for line in report.limitations.validation_status %}<li>{{ line }}</li>{% endfor %}
+    {% for note in report.limitations.notes %}<li>{{ note }}</li>{% endfor %}
+    <li>Unpriced line items by reason: {% for k, v in report.limitations.unpriced_reasons.items() %}{{ k }}: {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not report.limitations.unpriced_reasons %}none{% endif %}</li>
+    <li>Unsupported provider charges: {{ report.limitations.unsupported_charges_usd | usd }} · provisional snapshots: {{ report.limitations.provisional_snapshots }}</li>
+    <li>Price sources: {% for s in report.limitations.price_sources %}<code>{{ s }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+    <li>Versions: aiecon {{ report.identity.aiecon_version }} · schema {{ report.identity.schema_version }} · normalizer {{ report.identity.normalizer_version or "—" }} · pricing run <span class="id">{{ report.identity.pricing_run_id or "—" }}</span> · reconcile run <span class="id">{{ report.identity.reconcile_run_id or "—" }}</span></li>
+  </ul>
+  <details><summary>Input hashes</summary>
+    <table><tbody>
+    {% for name, digest in report.limitations.input_file_hashes.items() %}<tr><td class="id">{{ name }}</td><td class="id">{{ digest }}</td></tr>{% endfor %}
+    </tbody></table>
+  </details>
 </main>
 </body>
 </html>
