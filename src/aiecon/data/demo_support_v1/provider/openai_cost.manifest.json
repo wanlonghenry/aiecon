@@ -1,7 +1,7 @@
 {
   "currency": "USD",
   "data_kind": "synthetic",
-  "fetched_at_ms": 1790488800000,
+  "fetched_at_ms": 1790575200000,
   "finality": "provisional",
   "grain": "1d/line_item,project_id",
   "notes": "Synthetic fixture. Structure mimics the provider report; amounts are artificial.",

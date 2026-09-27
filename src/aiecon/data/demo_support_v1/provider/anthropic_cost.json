@@ -1,7 +1,7 @@
 {
   "records": [
     {
-      "amount_original": "33.3500",
+      "amount_original": "36.9500",
       "amount_unit": "cents",
       "currency": "USD",
       "dimensions_json": {
@@ -49,7 +49,7 @@
       "window_start_ms": 1790380800000
     },
     {
-      "amount_original": "20.500",
+      "amount_original": "23.3800",
       "amount_unit": "cents",
       "currency": "USD",
       "dimensions_json": {

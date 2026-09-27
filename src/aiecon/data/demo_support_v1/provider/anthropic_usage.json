@@ -15,8 +15,8 @@
           "ephemeral_5m_input_tokens": 2500
         },
         "cache_read_input_tokens": 35000,
-        "output_tokens": 25625,
-        "uncached_input_tokens": 166750
+        "output_tokens": 29225,
+        "uncached_input_tokens": 184750
       },
       "window_end_ms": 1790467200000,
       "window_start_ms": 1790380800000

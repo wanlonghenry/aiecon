@@ -67,10 +67,10 @@
   "failed_runs": 10,
   "fallback_runs": 5,
   "outcome_events": 100,
-  "phantom_call_cost_usd": "0.0072",
+  "phantom_call_cost_usd": "0.072",
   "provider_cost_usd": {
     "anthropic": {
-      "2026-09-26": "0.56225",
+      "2026-09-26": "0.62705",
       "2026-09-27": "0.483880"
     },
     "openai": {

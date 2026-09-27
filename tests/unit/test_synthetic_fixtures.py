@@ -41,7 +41,7 @@ def test_expected_metrics_shape_from_plan() -> None:
     for day in ("2026-09-26", "2026-09-27"):
         assert Decimal(provider["openai"][day]) == Decimal(by_day[f"openai/{day}"])
     phantom = Decimal(expected["phantom_call_cost_usd"])
-    assert phantom == Decimal("0.0072")  # 2000 x $2/M + 400 x $8/M
+    assert phantom == Decimal("0.072")  # 20000 x $2/M + 4000 x $8/M
     assert Decimal(provider["anthropic"]["2026-09-26"]) == (
         Decimal(by_day["anthropic/2026-09-26"]) + phantom
     )

@@ -70,7 +70,7 @@ BOUNDARY_RUN = 55  # its reasoning call straddles the UTC midnight boundary
 
 # Anthropic provider fixtures deviate from the local truth on purpose (section 11.1 billing
 # scenarios): day 1 carries one uncaptured call (explainable), day 2 an unexplained residue.
-PHANTOM_CALL_TOKENS = {"input_uncached": 2000, "output": 400}
+PHANTOM_CALL_TOKENS = {"input_uncached": 20000, "output": 4000}  # $0.072 at fixture rates
 UNEXPLAINED_RESIDUE_USD = Decimal("0.0137")
 
 
@@ -663,7 +663,7 @@ def build_provider_fixtures(calls: list[Call]) -> dict[str, dict[str, Any]]:
         usage_totals[phantom_key][resource] += quantity
     usage_totals[phantom_key]["requests"] += 1
 
-    fetched_at = DAY2_MS + 6 * 3600 * MS
+    fetched_at = DAY2_MS + DAY + 6 * 3600 * MS  # pulled the morning after the last day
     fixtures: dict[str, dict[str, Any]] = {}
     grains = {
         ("openai", "usage"): "1d/model,project_id",
