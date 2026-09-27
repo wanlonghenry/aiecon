@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aiecon report · demo-support-v1</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1b1b1b; --bg: #ffffff; --muted: #5f6368; --line: #d9dde3;
+          --banner: #7a4b00; --banner-bg: #fff4d6; --accent: #2b5fb3; --bar: #7aa2e3; --ok: #2b7a3d; --warn: #a1541b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e8e8e8; --bg: #121417; --muted: #a0a6ad; --line: #2b3038; --banner: #ffd479;
+            --banner-bg: #3a2a00; --accent: #8fb3ff; --bar: #4d7ac9; --ok: #6fcf85; --warn: #f0a25c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0 16px 48px; font: 15px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+         color: var(--fg); background: var(--bg); }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 20px 0 4px; }
+  h2 { font-size: 1.15rem; margin: 32px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+  h2 small { color: var(--muted); font-weight: normal; font-size: 0.85rem; }
+  p.lead { color: var(--muted); margin: 0 0 12px; }
+  .banner { margin: 16px 0; padding: 10px 14px; border: 1px solid var(--banner); background: var(--banner-bg);
+            color: var(--banner); font-weight: 600; border-radius: 6px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 12px 0; }
+  .tile { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  .tile .k { color: var(--muted); font-size: 0.8rem; }
+  .tile .v { font-size: 1.15rem; font-weight: 600; word-break: break-word; }
+  .tile .s { color: var(--muted); font-size: 0.78rem; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  code { font-size: 0.82rem; word-break: break-all; }
+  .id { word-break: break-all; color: var(--muted); font-size: 0.8rem; }
+  .status { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.78rem; border: 1px solid var(--line); }
+  .status.matched { color: var(--ok); border-color: var(--ok); }
+  .status.variance, .status.provisional, .status.scope_mismatch, .status.unpriced { color: var(--warn); border-color: var(--warn); }
+  details { margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .lines li { margin: 4px 0; }
+  .bar { display: grid; grid-template-columns: minmax(120px, 34%) 1fr 110px; gap: 8px; align-items: center; margin: 4px 0; font-size: 0.85rem; }
+  .bar .track { height: 12px; background: var(--line); border-radius: 6px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--bar); }
+  ul { padding-left: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="banner">SYNTHETIC DEMO — every number on this page comes from generated fixtures, not from a real account.</div>
+  <h1>aiecon cost report</h1>
+  <p class="lead">Dataset <code>demo-support-v1</code> · generated 2026-09-27 08:29:09 UTC · aiecon 0.1.0</p>
+
+  <h2>1. Data identity</h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Data kind</div><div class="v">synthetic</div></div>
+    <div class="tile"><div class="k">Call window (UTC)</div>
+      <div class="v">2026-09-26 → 2026-09-27</div>
+      <div class="s">half-open; call start times</div></div>
+    <div class="tile"><div class="k">Calls / outcomes</div><div class="v">313 / 100</div></div>
+    <div class="tile"><div class="k">Pricing run</div><div class="v id">pr_5825a5fa4633_c523993952a0_010</div>
+      <div class="s">catalog synthetic-0.1 (synthetic)</div></div>
+    <div class="tile"><div class="k">Provider snapshots</div><div class="v">4</div>
+      <div class="s">provisional: 4</div></div>
+  </div>
+
+  <h2>2. Outcome economics <small>workflow runs with a terminal outcome (succeeded/failed/abandoned); all calls of those runs, by run terminal time</small></h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Terminal runs</div><div class="v">100</div>
+      <div class="s">90 succeeded · 10 failed · 0 abandoned</div></div>
+    <div class="tile"><div class="k">Pending / unknown · without outcome · unattributed calls</div>
+      <div class="v">0 · 0 · 0</div></div>
+    <div class="tile"><div class="k">Cohort known cost</div><div class="v">$1.616110</div>
+      <div class="s">313 calls · 5 with unknown cost</div></div>
+    <div class="tile"><div class="k">Cost per successful outcome</div><div class="v">$0.017957</div>
+      <div class="s">known-cost lower bound (known-cost lower bound)</div></div>
+    <div class="tile"><div class="k">Successful-runs-only cost per success</div><div class="v">$0.016075</div>
+      <div class="s">different label, different denominator basis</div></div>
+  </div>
+
+  <h3>Where the cost went</h3>
+  <div class="bar"><span class="id">support_agent / reasoning / fixture-anthropic-v1</span><div class="track"><div class="fill" style="width: 100%"></div></div><span class="num">$1.005862</span></div>
+  <div class="bar"><span class="id">support_agent / finalize / fixture-openai-v1</span><div class="track"><div class="fill" style="width: 39%"></div></div><span class="num">$0.401064</span></div>
+  <div class="bar"><span class="id">support_agent / classification / fixture-openai-v1</span><div class="track"><div class="fill" style="width: 18%"></div></div><span class="num">$0.189816</span></div>
+  <div class="bar"><span class="id">support_agent / finalize / fixture-anthropic-v1</span><div class="track"><div class="fill" style="width: 1%"></div></div><span class="num">$0.019368</span></div>
+  <div class="wrap"><table>
+    <thead><tr><th>workflow</th><th>node</th><th>provider</th><th>model</th><th class="num">calls</th><th class="num">unpriced</th><th class="num">input tokens</th><th class="num">output tokens</th><th class="num">known cost</th></tr></thead>
+    <tbody>
+    <tr><td>support_agent</td><td>reasoning</td><td>anthropic</td><td><code>fixture-anthropic-v1</code></td>
+        <td class="num">108</td><td class="num">3</td><td class="num">377,768</td><td class="num">45,197</td><td class="num">$1.005862</td></tr>
+    <tr><td>support_agent</td><td>finalize</td><td>openai</td><td><code>fixture-openai-v1</code></td>
+        <td class="num">100</td><td class="num">2</td><td class="num">114,564</td><td class="num">21,492</td><td class="num">$0.401064</td></tr>
+    <tr><td>support_agent</td><td>classification</td><td>openai</td><td><code>fixture-openai-v1</code></td>
+        <td class="num">100</td><td class="num">0</td><td class="num">120,000</td><td class="num">8,727</td><td class="num">$0.189816</td></tr>
+    <tr><td>support_agent</td><td>finalize</td><td>anthropic</td><td><code>fixture-anthropic-v1</code></td>
+        <td class="num">5</td><td class="num">0</td><td class="num">5,284</td><td class="num">1,100</td><td class="num">$0.019368</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>3. Monetary reconciliation <small>E = local estimate, B = provider-reported cost, same scope and UTC day</small></h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Σ E (local estimate)</div><div class="v">$1.616110</div></div>
+    <div class="tile"><div class="k">Σ B (provider-reported)</div><div class="v">$1.701810</div><div class="s">modeled categories only</div></div>
+    <div class="tile"><div class="k">Unmodeled provider charges</div><div class="v">Unknown</div><div class="s">listed separately, never compared</div></div>
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>provider</th><th>scope</th><th>day</th><th>grain</th><th class="num">E</th><th class="num">B</th><th class="num">E − B</th><th class="num">%</th><th class="num">explained</th><th class="num">unexplained</th><th>status</th><th>reasons</th></tr></thead>
+    <tbody>
+    <tr><td>anthropic</td><td class="id">demo_scope_anthropic</td><td>2026-09-26</td><td class="id">1d/description,workspace_id</td>
+        <td class="num">$0.555050</td><td class="num">$0.627050</td>
+        <td class="num">$-0.072000</td><td class="num">-11.48%</td>
+        <td class="num">$-0.072000</td>
+        <td class="num">$0.000000</td>
+        <td><span class="status variance">variance</span></td><td class="id">unpriced_calls, boundary_call, capture_gap, explained</td></tr>
+    <tr><td>anthropic</td><td class="id">demo_scope_anthropic</td><td>2026-09-27</td><td class="id">1d/description,workspace_id</td>
+        <td class="num">$0.470180</td><td class="num">$0.483880</td>
+        <td class="num">$-0.013700</td><td class="num">-2.83%</td>
+        <td class="num">—</td>
+        <td class="num">$-0.013700</td>
+        <td><span class="status variance">variance</span></td><td class="id">unpriced_calls, unexplained</td></tr>
+    <tr><td>openai</td><td class="id">demo_scope_openai</td><td>2026-09-26</td><td class="id">1d/line_item,project_id</td>
+        <td class="num">$0.320404</td><td class="num">$0.320404</td>
+        <td class="num">$0.000000</td><td class="num">+0.00%</td>
+        <td class="num">—</td>
+        <td class="num">$0.000000</td>
+        <td><span class="status matched">matched</span></td><td class="id">unpriced_calls</td></tr>
+    <tr><td>openai</td><td class="id">demo_scope_openai</td><td>2026-09-27</td><td class="id">1d/line_item,project_id</td>
+        <td class="num">$0.270476</td><td class="num">$0.270476</td>
+        <td class="num">$0.000000</td><td class="num">+0.00%</td>
+        <td class="num">—</td>
+        <td class="num">$0.000000</td>
+        <td><span class="status matched">matched</span></td><td class="id">unpriced_calls</td></tr>
+    </tbody>
+  </table></div>
+  <ul class="lines">
+<li>Your estimates run 11.5% below provider-reported costs (anthropic, demo_scope_anthropic, 2026-09-26 UTC).</li><li>Your estimates run 2.8% below provider-reported costs (anthropic, demo_scope_anthropic, 2026-09-27 UTC).</li><li>Your estimates run 0.0% above provider-reported costs (openai, demo_scope_openai, 2026-09-26 UTC).</li><li>Your estimates run 0.0% above provider-reported costs (openai, demo_scope_openai, 2026-09-27 UTC).</li>  </ul>
+  <details><summary>Evidence · anthropic · 2026-09-26</summary>
+<p><strong>capture_gap</strong> $-0.072000 (evidence-backed) — Provider usage reports more tokens than the local log captured; priced at the rates of this bucket&#39;s own line items.<br><span class="id">usage_anthropic_2026-09-26_fixture-anthropic-v1</span></p><p><strong>boundary_call</strong> $0.005290 (hypothesis, not counted) — Calls straddling UTC midnight are priced on their start day; the provider may report them on the end day.<br><span class="id">call_055_rsn_1</span></p>    <p class="id">provider records: cost_anthropic_2026-09-26_cache_creation.ephemeral_5m_input_tokens, cost_anthropic_2026-09-26_cache_read_input_tokens, cost_anthropic_2026-09-26_output_tokens, cost_anthropic_2026-09-26_uncached_input_tokens</p>
+  </details>
+
+  <h2>4. Usage coverage <small>provider usage vs local usage</small></h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Calls missing usage</div><div class="v">5</div></div>
+    <div class="tile"><div class="k">Calls not fully priced</div><div class="v">5</div>
+      <div class="s">usage_missing: 10</div></div>
+    <div class="tile"><div class="k">Unmatched scopes</div><div class="v">0</div><div class="s id"></div></div>
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>provider</th><th>scope</th><th>day</th><th>model</th><th class="num">local total in</th><th class="num">provider total in</th><th class="num">local out</th><th class="num">provider out</th><th class="num">Δ uncached</th><th class="num">Δ cache read</th><th class="num">Δ cache write</th><th>status</th></tr></thead>
+    <tbody>
+    <tr><td>anthropic</td><td class="id">demo_scope_anthropic</td><td>2026-09-26</td><td><code>fixture-anthropic-v1</code></td>
+        <td class="num">202,250</td><td class="num">222,250</td>
+        <td class="num">25,225</td><td class="num">29,225</td>
+        <td class="num">-20000</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td><span class="status variance">variance</span> <span class="id">capture_gap, unpriced_calls</span></td></tr>
+    <tr><td>anthropic</td><td class="id">demo_scope_anthropic</td><td>2026-09-27</td><td><code>fixture-anthropic-v1</code></td>
+        <td class="num">180,802</td><td class="num">180,802</td>
+        <td class="num">21,072</td><td class="num">21,072</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td><span class="status matched">matched</span> <span class="id">unpriced_calls</span></td></tr>
+    <tr><td>openai</td><td class="id">demo_scope_openai</td><td>2026-09-26</td><td><code>fixture-openai-v1</code></td>
+        <td class="num">127,714</td><td class="num">127,714</td>
+        <td class="num">16,372</td><td class="num">16,372</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td><span class="status matched">matched</span> <span class="id">unpriced_calls</span></td></tr>
+    <tr><td>openai</td><td class="id">demo_scope_openai</td><td>2026-09-27</td><td><code>fixture-openai-v1</code></td>
+        <td class="num">106,850</td><td class="num">106,850</td>
+        <td class="num">13,847</td><td class="num">13,847</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td><span class="status matched">matched</span> <span class="id">unpriced_calls</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>5. Waste findings <small>fallback_waste.unused_fallback: 3 · repeated_context: 2 · retry_waste.discarded_attempt: 10 · retry_waste.failed_run: 10</small></h2>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.010126 observed · savings $0.010126 · labeled/high</summary>
+    <p>Attempt 1 of node run run_003_reasoning was discarded (superseded_by_retry) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> The application labeled this attempt as safely removable; test the flow without it and confirm the retry rate does not rise.</p>
+<p><strong>Assumptions:</strong> removing the attempt does not change the later attempt&#39;s cost</p><p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact</p>    <p class="id">finding f_discarded_cc3acae018460ebc · runs run_003 · calls call_003_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_003_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_003_rsn_1_output<br>events ev_call_003_rsn_1_started, ev_call_003_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.000000 observed (lower bound) · savings Unknown · insufficient/medium</summary>
+    <p>Attempt 1 of node run run_017_reasoning was discarded (attempt_failed) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> Cost of an attempt whose result was discarded; investigate why it was superseded before assuming it is avoidable.</p>
+<p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact; usage or price missing: the amount is a known-cost lower bound; attempt ended with status timeout; provider billing is unknown</p>    <p class="id">finding f_discarded_4887ab353a20f22c · runs run_017 · calls call_017_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_017_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_017_rsn_1_output<br>events ev_call_017_rsn_1_started, ev_call_017_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.009804 observed · savings $0.009804 · labeled/high</summary>
+    <p>Attempt 1 of node run run_031_reasoning was discarded (superseded_by_retry) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> The application labeled this attempt as safely removable; test the flow without it and confirm the retry rate does not rise.</p>
+<p><strong>Assumptions:</strong> removing the attempt does not change the later attempt&#39;s cost</p><p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact</p>    <p class="id">finding f_discarded_dbca8ece8a2c8cb5 · runs run_031 · calls call_031_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_031_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_031_rsn_1_output<br>events ev_call_031_rsn_1_started, ev_call_031_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.000000 observed (lower bound) · savings Unknown · insufficient/medium</summary>
+    <p>Attempt 1 of node run run_041_finalize was discarded (attempt_failed) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> Cost of an attempt whose result was discarded; investigate why it was superseded before assuming it is avoidable.</p>
+<p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact; usage or price missing: the amount is a known-cost lower bound; attempt ended with status error; provider billing is unknown</p>    <p class="id">finding f_discarded_119cdefc05f6687d · runs run_041 · calls call_041_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_041_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_041_fin_1_output<br>events ev_call_041_fin_1_started, ev_call_041_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.000000 observed (lower bound) · savings Unknown · insufficient/medium</summary>
+    <p>Attempt 1 of node run run_045_reasoning was discarded (attempt_failed) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> Cost of an attempt whose result was discarded; investigate why it was superseded before assuming it is avoidable.</p>
+<p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact; usage or price missing: the amount is a known-cost lower bound; attempt ended with status timeout; provider billing is unknown</p>    <p class="id">finding f_discarded_af203f04a2f3fd69 · runs run_045 · calls call_045_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_045_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_045_rsn_1_output<br>events ev_call_045_rsn_1_started, ev_call_045_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.005684 observed · savings $0.005684 · labeled/high</summary>
+    <p>Attempt 1 of node run run_058_reasoning was discarded (superseded_by_retry) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> The application labeled this attempt as safely removable; test the flow without it and confirm the retry rate does not rise.</p>
+<p><strong>Assumptions:</strong> removing the attempt does not change the later attempt&#39;s cost</p><p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact</p>    <p class="id">finding f_discarded_83aa86ba7c435df3 · runs run_058 · calls call_058_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_058_rsn_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_058_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_058_rsn_1_output<br>events ev_call_058_rsn_1_started, ev_call_058_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.000000 observed (lower bound) · savings Unknown · insufficient/medium</summary>
+    <p>Attempt 1 of node run run_072_reasoning was discarded (attempt_failed) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> Cost of an attempt whose result was discarded; investigate why it was superseded before assuming it is avoidable.</p>
+<p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact; usage or price missing: the amount is a known-cost lower bound; attempt ended with status timeout; provider billing is unknown</p>    <p class="id">finding f_discarded_14145ba2957ce011 · runs run_072 · calls call_072_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_072_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_072_rsn_1_output<br>events ev_call_072_rsn_1_started, ev_call_072_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.000000 observed (lower bound) · savings Unknown · insufficient/medium</summary>
+    <p>Attempt 1 of node run run_077_finalize was discarded (attempt_failed) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> Cost of an attempt whose result was discarded; investigate why it was superseded before assuming it is avoidable.</p>
+<p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact; usage or price missing: the amount is a known-cost lower bound; attempt ended with status error; provider billing is unknown</p>    <p class="id">finding f_discarded_e178739ed66a661f · runs run_077 · calls call_077_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_077_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_077_fin_1_output<br>events ev_call_077_fin_1_started, ev_call_077_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.012286 observed · savings $0.012286 · labeled/high</summary>
+    <p>Attempt 1 of node run run_086_reasoning was discarded (superseded_by_retry) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> The application labeled this attempt as safely removable; test the flow without it and confirm the retry rate does not rise.</p>
+<p><strong>Assumptions:</strong> removing the attempt does not change the later attempt&#39;s cost</p><p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact</p>    <p class="id">finding f_discarded_0cd9c0fc93ce2818 · runs run_086 · calls call_086_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_086_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_086_rsn_1_output<br>events ev_call_086_rsn_1_started, ev_call_086_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.discarded_attempt · $0.011150 observed · savings $0.011150 · labeled/high</summary>
+    <p>Attempt 1 of node run run_100_reasoning was discarded (superseded_by_retry) and superseded by a later attempt.</p>
+    <p><strong>Proposed action:</strong> The application labeled this attempt as safely removable; test the flow without it and confirm the retry rate does not rise.</p>
+<p><strong>Assumptions:</strong> removing the attempt does not change the later attempt&#39;s cost</p><p><strong>Caveats:</strong> a retry may have been necessary; avoidability is a scenario, not a fact</p>    <p class="id">finding f_discarded_9289af75d0c9c2a3 · runs run_100 · calls call_100_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_100_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_100_rsn_1_output<br>events ev_call_100_rsn_1_started, ev_call_100_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.015308 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_010 ended failed after 3 calls with a known cost of $0.015308000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_cf9dceb832f88fb8 · runs run_010 · calls call_010_cls_1, call_010_rsn_1, call_010_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_010_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_010_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_010_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_010_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_010_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_010_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_010_fin_1_output<br>events ev_run_010_outcome_1, ev_call_010_cls_1_started, ev_call_010_cls_1_finished_1, ev_call_010_rsn_1_started, ev_call_010_rsn_1_finished_1, ev_call_010_fin_1_started, ev_call_010_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.015084 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_020 ended failed after 3 calls with a known cost of $0.015084000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_2d9733b1b1756322 · runs run_020 · calls call_020_cls_1, call_020_rsn_1, call_020_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_020_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_020_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_020_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_020_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_020_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_020_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_020_fin_1_output<br>events ev_run_020_outcome_1, ev_call_020_cls_1_started, ev_call_020_cls_1_finished_1, ev_call_020_rsn_1_started, ev_call_020_rsn_1_finished_1, ev_call_020_fin_1_started, ev_call_020_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.015700 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_030 ended failed after 3 calls with a known cost of $0.015700000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_b64994f13ebb8586 · runs run_030 · calls call_030_cls_1, call_030_rsn_1, call_030_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_030_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_030_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_030_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_030_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_030_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_030_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_030_fin_1_output<br>events ev_run_030_outcome_1, ev_call_030_cls_1_started, ev_call_030_cls_1_finished_1, ev_call_030_rsn_1_started, ev_call_030_rsn_1_finished_1, ev_call_030_fin_1_started, ev_call_030_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.017848 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_040 ended failed after 3 calls with a known cost of $0.017848000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_e9eea2a8517148f8 · runs run_040 · calls call_040_cls_1, call_040_rsn_1, call_040_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_040_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_040_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_040_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_040_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_040_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_040_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_040_fin_1_output<br>events ev_run_040_outcome_1, ev_call_040_cls_1_started, ev_call_040_cls_1_finished_1, ev_call_040_rsn_1_started, ev_call_040_rsn_1_finished_1, ev_call_040_fin_1_started, ev_call_040_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.012978 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_050 ended failed after 3 calls with a known cost of $0.012978000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_ee8ddd5870ef71c1 · runs run_050 · calls call_050_cls_1, call_050_rsn_1, call_050_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_050_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_050_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_050_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_050_rsn_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_050_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_050_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_050_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_050_fin_1_output<br>events ev_run_050_outcome_1, ev_call_050_cls_1_started, ev_call_050_cls_1_finished_1, ev_call_050_rsn_1_started, ev_call_050_rsn_1_finished_1, ev_call_050_fin_1_started, ev_call_050_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.011634 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_060 ended failed after 3 calls with a known cost of $0.011634000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_ca6efe914a529f4b · runs run_060 · calls call_060_cls_1, call_060_rsn_1, call_060_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_060_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_060_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_060_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_060_rsn_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_060_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_060_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_060_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_060_fin_1_output<br>events ev_run_060_outcome_1, ev_call_060_cls_1_started, ev_call_060_cls_1_finished_1, ev_call_060_rsn_1_started, ev_call_060_rsn_1_finished_1, ev_call_060_fin_1_started, ev_call_060_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.012564 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_070 ended failed after 3 calls with a known cost of $0.012564000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_af2e49cfa30e8c0e · runs run_070 · calls call_070_cls_1, call_070_rsn_1, call_070_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_070_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_070_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_070_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_070_rsn_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_070_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_070_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_070_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_070_fin_1_output<br>events ev_run_070_outcome_1, ev_call_070_cls_1_started, ev_call_070_cls_1_finished_1, ev_call_070_rsn_1_started, ev_call_070_rsn_1_finished_1, ev_call_070_fin_1_started, ev_call_070_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.017810 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_080 ended failed after 3 calls with a known cost of $0.017810000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_c717b3e9b2a2e75d · runs run_080 · calls call_080_cls_1, call_080_rsn_1, call_080_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_080_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_080_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_080_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_080_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_080_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_080_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_080_fin_1_output<br>events ev_run_080_outcome_1, ev_call_080_cls_1_started, ev_call_080_cls_1_finished_1, ev_call_080_rsn_1_started, ev_call_080_rsn_1_finished_1, ev_call_080_fin_1_started, ev_call_080_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.019294 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_090 ended failed after 3 calls with a known cost of $0.019294000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_d8a13312ed560c06 · runs run_090 · calls call_090_cls_1, call_090_rsn_1, call_090_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_090_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_090_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_090_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_090_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_090_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_090_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_090_fin_1_output<br>events ev_run_090_outcome_1, ev_call_090_cls_1_started, ev_call_090_cls_1_finished_1, ev_call_090_rsn_1_started, ev_call_090_rsn_1_finished_1, ev_call_090_fin_1_started, ev_call_090_fin_1_finished_1</p>
+  </details>
+  <details>
+    <summary>retry_waste.failed_run · $0.031112 observed · savings Unknown · labeled/high</summary>
+    <p>Run run_100 ended failed after 5 calls with a known cost of $0.031112000000.</p>
+    <p><strong>Proposed action:</strong> Review why the run ended as failed; consider failing earlier or cheaper before the expensive nodes run.</p>
+<p><strong>Caveats:</strong> a failed run&#39;s cost is not automatically avoidable</p>    <p class="id">finding f_failedrun_d47078a944843d0a · runs run_100 · calls call_100_cls_1, call_100_rsn_1, call_100_rsn_2, call_100_fin_1, call_100_fin_2<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_100_cls_1_input_cache_read, li_pr_5825a5fa4633_c523993952a0_010_call_100_cls_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_100_cls_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_100_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_100_rsn_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_100_rsn_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_100_rsn_2_output, li_pr_5825a5fa4633_c523993952a0_010_call_100_fin_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_100_fin_1_output, li_pr_5825a5fa4633_c523993952a0_010_call_100_fin_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_100_fin_2_output<br>events ev_run_100_outcome_1, ev_call_100_cls_1_started, ev_call_100_cls_1_finished_1, ev_call_100_rsn_1_started, ev_call_100_rsn_1_finished_1, ev_call_100_rsn_2_started, ev_call_100_rsn_2_finished_1, ev_call_100_fin_1_started, ev_call_100_fin_1_finished_1, ev_call_100_fin_2_started, ev_call_100_fin_2_finished_1</p>
+  </details>
+  <details>
+    <summary>fallback_waste.unused_fallback · $0.004484 observed · savings $0.004484 · labeled/high</summary>
+    <p>Fallback call call_008_fin_2 (anthropic) after call_008_fin_1 ended with disposition discarded.</p>
+    <p><strong>Proposed action:</strong> The primary attempt succeeded and this fallback was labeled redundant; try gating the fallback on the primary result instead of firing it eagerly.</p>
+<p><strong>Assumptions:</strong> the primary result is acceptable without the fallback</p><p><strong>Caveats:</strong> a fallback that raised success rate has value; removal is a scenario</p>    <p class="id">finding f_fallback_a235fd349b163010 · runs run_008 · calls call_008_fin_2, call_008_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_008_fin_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_008_fin_2_output<br>events ev_call_008_fin_2_started, ev_call_008_fin_2_finished_1</p>
+  </details>
+  <details>
+    <summary>fallback_waste.unused_fallback · $0.004174 observed · savings $0.004174 · labeled/high</summary>
+    <p>Fallback call call_064_fin_2 (anthropic) after call_064_fin_1 ended with disposition discarded.</p>
+    <p><strong>Proposed action:</strong> The primary attempt succeeded and this fallback was labeled redundant; try gating the fallback on the primary result instead of firing it eagerly.</p>
+<p><strong>Assumptions:</strong> the primary result is acceptable without the fallback</p><p><strong>Caveats:</strong> a fallback that raised success rate has value; removal is a scenario</p>    <p class="id">finding f_fallback_cc9caeacba3bc97d · runs run_064 · calls call_064_fin_2, call_064_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_064_fin_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_064_fin_2_output<br>events ev_call_064_fin_2_started, ev_call_064_fin_2_finished_1</p>
+  </details>
+  <details>
+    <summary>fallback_waste.unused_fallback · $0.003218 observed · savings $0.003218 · labeled/high</summary>
+    <p>Fallback call call_100_fin_2 (anthropic) after call_100_fin_1 ended with disposition discarded.</p>
+    <p><strong>Proposed action:</strong> The primary attempt succeeded and this fallback was labeled redundant; try gating the fallback on the primary result instead of firing it eagerly.</p>
+<p><strong>Assumptions:</strong> the primary result is acceptable without the fallback</p><p><strong>Caveats:</strong> a fallback that raised success rate has value; removal is a scenario</p>    <p class="id">finding f_fallback_caec92efb4a24de0 · runs run_100 · calls call_100_fin_2, call_100_fin_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_100_fin_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_100_fin_2_output<br>events ev_call_100_fin_2_started, ev_call_100_fin_2_finished_1</p>
+  </details>
+  <details>
+    <summary>repeated_context · $0.304374 observed (lower bound) · savings $0.183000 · modeled/medium</summary>
+    <p>This 3000-token prefix appeared in 43 calls (observed). Provider-reported cache usage: 0 tokens read / 0 written (observed). Modeled cache scenario under the stated assumptions: $0.183000000000 savings, break-even at 2 reuses (modeled).</p>
+    <p><strong>Proposed action:</strong> Enable cache policy ephemeral_5m for this prefix on fixture-anthropic-v1 and verify provider-reported cache reads afterwards.</p>
+<p><strong>Assumptions:</strong> scenario policy ephemeral_5m: TTL 5 min, sequential calls, no eviction, one write per cold-start segment; the whole fingerprinted prefix is cacheable and repeated verbatim; prices from the catalog used by the active pricing run</p><p><strong>Caveats:</strong> scenario values are modeled, not observed; provider cache behaviour may differ</p>    <p class="id">finding f_context_1a737415df143421 · runs run_001, run_002, run_003, run_004, run_005, run_006, run_007, run_008, run_009, run_010, run_011, run_012, run_013, run_014, run_015, run_016, run_017, run_018, run_019, run_020, run_021, run_022, run_023, run_024, run_025, run_026, run_027, run_028, run_029, run_030, run_031, run_032, run_033, run_034, run_035, run_036, run_037, run_038, run_039, run_040 · calls call_001_rsn_1, call_002_rsn_1, call_003_rsn_1, call_003_rsn_2, call_004_rsn_1, call_005_rsn_1, call_006_rsn_1, call_007_rsn_1, call_008_rsn_1, call_009_rsn_1, call_010_rsn_1, call_011_rsn_1, call_012_rsn_1, call_013_rsn_1, call_014_rsn_1, call_015_rsn_1, call_016_rsn_1, call_017_rsn_1, call_017_rsn_2, call_018_rsn_1, call_019_rsn_1, call_020_rsn_1, call_021_rsn_1, call_022_rsn_1, call_023_rsn_1, call_024_rsn_1, call_025_rsn_1, call_026_rsn_1, call_027_rsn_1, call_028_rsn_1, call_029_rsn_1, call_030_rsn_1, call_031_rsn_1, call_031_rsn_2, call_032_rsn_1, call_033_rsn_1, call_034_rsn_1, call_035_rsn_1, call_036_rsn_1, call_037_rsn_1, call_038_rsn_1, call_039_rsn_1, call_040_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_001_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_002_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_003_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_003_rsn_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_004_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_005_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_006_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_007_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_008_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_009_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_010_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_011_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_012_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_013_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_014_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_015_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_016_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_017_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_017_rsn_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_018_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_019_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_020_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_021_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_022_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_023_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_024_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_025_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_026_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_027_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_028_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_029_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_030_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_031_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_031_rsn_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_032_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_033_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_034_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_035_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_036_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_037_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_038_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_039_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_040_rsn_1_input_uncached<br>events ev_call_001_rsn_1_started, ev_call_001_rsn_1_finished_1, ev_call_002_rsn_1_started, ev_call_002_rsn_1_finished_1, ev_call_003_rsn_1_started, ev_call_003_rsn_1_finished_1, ev_call_003_rsn_2_started, ev_call_003_rsn_2_finished_1, ev_call_004_rsn_1_started, ev_call_004_rsn_1_finished_1, ev_call_005_rsn_1_started, ev_call_005_rsn_1_finished_1, ev_call_006_rsn_1_started, ev_call_006_rsn_1_finished_1, ev_call_007_rsn_1_started, ev_call_007_rsn_1_finished_1, ev_call_008_rsn_1_started, ev_call_008_rsn_1_finished_1, ev_call_009_rsn_1_started, ev_call_009_rsn_1_finished_1, ev_call_010_rsn_1_started, ev_call_010_rsn_1_finished_1, ev_call_011_rsn_1_started, ev_call_011_rsn_1_finished_1, ev_call_012_rsn_1_started, ev_call_012_rsn_1_finished_1, ev_call_013_rsn_1_started, ev_call_013_rsn_1_finished_1, ev_call_014_rsn_1_started, ev_call_014_rsn_1_finished_1, ev_call_015_rsn_1_started, ev_call_015_rsn_1_finished_1, ev_call_016_rsn_1_started, ev_call_016_rsn_1_finished_1, ev_call_017_rsn_1_started, ev_call_017_rsn_1_finished_1, ev_call_017_rsn_2_started, ev_call_017_rsn_2_finished_1, ev_call_018_rsn_1_started, ev_call_018_rsn_1_finished_1, ev_call_019_rsn_1_started, ev_call_019_rsn_1_finished_1, ev_call_020_rsn_1_started, ev_call_020_rsn_1_finished_1, ev_call_021_rsn_1_started, ev_call_021_rsn_1_finished_1, ev_call_022_rsn_1_started, ev_call_022_rsn_1_finished_1, ev_call_023_rsn_1_started, ev_call_023_rsn_1_finished_1, ev_call_024_rsn_1_started, ev_call_024_rsn_1_finished_1, ev_call_025_rsn_1_started, ev_call_025_rsn_1_finished_1, ev_call_026_rsn_1_started, ev_call_026_rsn_1_finished_1, ev_call_027_rsn_1_started, ev_call_027_rsn_1_finished_1, ev_call_028_rsn_1_started, ev_call_028_rsn_1_finished_1, ev_call_029_rsn_1_started, ev_call_029_rsn_1_finished_1, ev_call_030_rsn_1_started, ev_call_030_rsn_1_finished_1, ev_call_031_rsn_1_started, ev_call_031_rsn_1_finished_1, ev_call_031_rsn_2_started, ev_call_031_rsn_2_finished_1, ev_call_032_rsn_1_started, ev_call_032_rsn_1_finished_1, ev_call_033_rsn_1_started, ev_call_033_rsn_1_finished_1, ev_call_034_rsn_1_started, ev_call_034_rsn_1_finished_1, ev_call_035_rsn_1_started, ev_call_035_rsn_1_finished_1, ev_call_036_rsn_1_started, ev_call_036_rsn_1_finished_1, ev_call_037_rsn_1_started, ev_call_037_rsn_1_finished_1, ev_call_038_rsn_1_started, ev_call_038_rsn_1_finished_1, ev_call_039_rsn_1_started, ev_call_039_rsn_1_finished_1, ev_call_040_rsn_1_started, ev_call_040_rsn_1_finished_1</p>
+  </details>
+  <details>
+    <summary>repeated_context · $0.035702 observed (lower bound) · savings $0.012000 · modeled/medium</summary>
+    <p>This 3000-token prefix appeared in 6 calls (observed). Provider-reported cache usage: 0 tokens read / 0 written (observed). Modeled cache scenario under the stated assumptions: $0.012000000000 savings, break-even at 3 reuses (modeled).</p>
+    <p><strong>Proposed action:</strong> Enable cache policy ephemeral_1h for this prefix on fixture-anthropic-v1 and verify provider-reported cache reads afterwards.</p>
+<p><strong>Assumptions:</strong> scenario policy ephemeral_1h: TTL 60 min, sequential calls, no eviction, one write per cold-start segment; the whole fingerprinted prefix is cacheable and repeated verbatim; prices from the catalog used by the active pricing run</p><p><strong>Caveats:</strong> scenario values are modeled, not observed; provider cache behaviour may differ</p>    <p class="id">finding f_context_e14ef2717cee934a · runs run_071, run_072, run_073, run_074, run_075 · calls call_071_rsn_1, call_072_rsn_1, call_072_rsn_2, call_073_rsn_1, call_074_rsn_1, call_075_rsn_1<br>line items li_pr_5825a5fa4633_c523993952a0_010_call_071_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_072_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_072_rsn_2_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_073_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_074_rsn_1_input_uncached, li_pr_5825a5fa4633_c523993952a0_010_call_075_rsn_1_input_uncached<br>events ev_call_071_rsn_1_started, ev_call_071_rsn_1_finished_1, ev_call_072_rsn_1_started, ev_call_072_rsn_1_finished_1, ev_call_072_rsn_2_started, ev_call_072_rsn_2_finished_1, ev_call_073_rsn_1_started, ev_call_073_rsn_1_finished_1, ev_call_074_rsn_1_started, ev_call_074_rsn_1_finished_1, ev_call_075_rsn_1_started, ev_call_075_rsn_1_finished_1</p>
+  </details>
+
+  <h2>6. Context economics <small>82 calls with prefix evidence · 231 without</small></h2>
+  <div class="wrap"><table>
+    <thead><tr><th>scope / model</th><th>prefix</th><th class="num">calls</th><th class="num">prefix tokens</th><th class="num">observed reads</th><th class="num">observed writes</th><th>scenario</th><th class="num">no-cache</th><th class="num">cached</th><th class="num">savings</th><th class="num">break-even</th><th>recommendation</th></tr></thead>
+    <tbody>
+    <tr><td class="id">demo_scope_anthropic · fixture-anthropic-v1 · ephemeral_5m</td><td class="id">bbbbbbbbbbbbbbbb…</td>
+        <td class="num">32</td><td class="num">2,500</td><td class="num">75,000</td><td class="num">2,500</td>
+        <td>—</td>
+        <td class="num">Unknown</td><td class="num">Unknown</td><td class="num">Unknown</td><td class="num">Not available</td>
+        <td><span class="status">already_cached</span></td></tr>
+    <tr><td class="id">demo_scope_anthropic · fixture-anthropic-v1 · none</td><td class="id">aaaaaaaaaaaaaaaa…</td>
+        <td class="num">43</td><td class="num">3,000</td><td class="num">0</td><td class="num">0</td>
+        <td>ephemeral_5m (1 segment)</td>
+        <td class="num">$0.252000</td><td class="num">$0.069000</td><td class="num">$0.183000</td><td class="num">2</td>
+        <td><span class="status">beneficial</span></td></tr>
+    <tr><td class="id">demo_scope_anthropic · fixture-anthropic-v1 · none</td><td class="id">cccccccccccccccc…</td>
+        <td class="num">6</td><td class="num">3,000</td><td class="num">0</td><td class="num">0</td>
+        <td>ephemeral_1h (1 segment)</td>
+        <td class="num">$0.030000</td><td class="num">$0.018000</td><td class="num">$0.012000</td><td class="num">3</td>
+        <td><span class="status">beneficial</span></td></tr>
+    <tr><td class="id">demo_scope_anthropic · fixture-anthropic-v1 · none</td><td class="id">dddddddddddddddd…</td>
+        <td class="num">1</td><td class="num">1,500</td><td class="num">0</td><td class="num">0</td>
+        <td>ephemeral_5m (1 segment)</td>
+        <td class="num">$0.003000</td><td class="num">$0.003750</td><td class="num">$-0.000750</td><td class="num">2</td>
+        <td><span class="status">not_beneficial</span></td></tr>
+    </tbody>
+  </table></div>
+  <details><summary>Assumptions · ctx_0001_bbbbbbbbbbbb</summary>
+<p><strong>Assumptions:</strong> provider-reported cache reads cover the repeated prefix</p><p><strong>Caveats:</strong> tokens already served from cache are not counted as potential savings</p>    <p class="id">supported policies: ephemeral_5m, ephemeral_1h · calls call_041_rsn_1, call_042_rsn_1, call_043_rsn_1, call_044_rsn_1, call_045_rsn_1, call_045_rsn_2, call_046_rsn_1, call_047_rsn_1, call_048_rsn_1, call_049_rsn_1, call_050_rsn_1, call_051_rsn_1, call_052_rsn_1, call_053_rsn_1, call_054_rsn_1, call_055_rsn_1, call_056_rsn_1, call_057_rsn_1, call_058_rsn_1, call_058_rsn_2, call_059_rsn_1, call_060_rsn_1, call_061_rsn_1, call_062_rsn_1, call_063_rsn_1, call_064_rsn_1, call_065_rsn_1, call_066_rsn_1, call_067_rsn_1, call_068_rsn_1, call_069_rsn_1, call_070_rsn_1</p>
+  </details>
+  <details><summary>Assumptions · ctx_0002_aaaaaaaaaaaa</summary>
+<p><strong>Assumptions:</strong> scenario policy ephemeral_5m: TTL 5 min, sequential calls, no eviction, one write per cold-start segment; the whole fingerprinted prefix is cacheable and repeated verbatim; prices from the catalog used by the active pricing run</p><p><strong>Caveats:</strong> scenario values are modeled, not observed; provider cache behaviour may differ</p>    <p class="id">supported policies: ephemeral_5m, ephemeral_1h · calls call_001_rsn_1, call_002_rsn_1, call_003_rsn_1, call_003_rsn_2, call_004_rsn_1, call_005_rsn_1, call_006_rsn_1, call_007_rsn_1, call_008_rsn_1, call_009_rsn_1, call_010_rsn_1, call_011_rsn_1, call_012_rsn_1, call_013_rsn_1, call_014_rsn_1, call_015_rsn_1, call_016_rsn_1, call_017_rsn_1, call_017_rsn_2, call_018_rsn_1, call_019_rsn_1, call_020_rsn_1, call_021_rsn_1, call_022_rsn_1, call_023_rsn_1, call_024_rsn_1, call_025_rsn_1, call_026_rsn_1, call_027_rsn_1, call_028_rsn_1, call_029_rsn_1, call_030_rsn_1, call_031_rsn_1, call_031_rsn_2, call_032_rsn_1, call_033_rsn_1, call_034_rsn_1, call_035_rsn_1, call_036_rsn_1, call_037_rsn_1, call_038_rsn_1, call_039_rsn_1, call_040_rsn_1</p>
+  </details>
+  <details><summary>Assumptions · ctx_0003_cccccccccccc</summary>
+<p><strong>Assumptions:</strong> scenario policy ephemeral_1h: TTL 60 min, sequential calls, no eviction, one write per cold-start segment; the whole fingerprinted prefix is cacheable and repeated verbatim; prices from the catalog used by the active pricing run</p><p><strong>Caveats:</strong> scenario values are modeled, not observed; provider cache behaviour may differ</p>    <p class="id">supported policies: ephemeral_5m, ephemeral_1h · calls call_071_rsn_1, call_072_rsn_1, call_072_rsn_2, call_073_rsn_1, call_074_rsn_1, call_075_rsn_1</p>
+  </details>
+  <details><summary>Assumptions · ctx_0004_dddddddddddd</summary>
+<p><strong>Assumptions:</strong> scenario policy ephemeral_5m: TTL 5 min, sequential calls, no eviction, one write per cold-start segment; the whole fingerprinted prefix is cacheable and repeated verbatim; prices from the catalog used by the active pricing run</p><p><strong>Caveats:</strong> scenario values are modeled, not observed; provider cache behaviour may differ</p>    <p class="id">supported policies: ephemeral_5m, ephemeral_1h · calls call_076_rsn_1</p>
+  </details>
+
+  <h2>7. Summary of opportunities</h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Cost covered by findings (union of line items)</div><div class="v">$0.512468</div>
+      <div class="s">141 line items · 86 calls · 5 with unknown cost · this is diagnosed cost, not savings</div></div>
+    <div class="tile"><div class="k">Best single-action savings scenario</div><div class="v">$0.183000</div>
+      <div class="s id">f_context_1a737415df143421</div></div>
+    <div class="tile"><div class="k">Joint savings across actions</div><div class="v">not computed</div></div>
+  </div>
+
+  <h2>8. Limitations and provenance</h2>
+  <ul>
+<li>openai: fixture-verified parsing; live reconciliation pending</li><li>anthropic: fixture-verified parsing; live reconciliation pending</li><li>All data in this report is synthetic and demonstrates the computation path only.</li><li>Estimates are provider-reported usage x catalog prices (evidence class B); they are never overwritten to match provider totals.</li><li>Provider-reported cost is not an invoice; settled amounts appear only when a settlement file was imported.</li><li>Joint savings across findings are not computed; only the best single action is shown.</li>    <li>Unpriced line items by reason: usage_missing: 10</li>
+    <li>Unsupported provider charges: Unknown · provisional snapshots: 4</li>
+    <li>Price sources: <code>synthetic://aiecon/fixture-rates</code></li>
+    <li>Versions: aiecon 0.1.0 · schema 0.1 · normalizer 0.1.0 · pricing run <span class="id">pr_5825a5fa4633_c523993952a0_010</span> · reconcile run <span class="id">rr_12b5d8dbea001f19</span></li>
+  </ul>
+  <details><summary>Input hashes</summary>
+    <table><tbody>
+<tr><td class="id">events.jsonl</td><td class="id">6269c67d15474728a3601a642a3db7b3b2d9f077a4d9fc5934cfb892de8b7fd7</td></tr><tr><td class="id">snap_demo-support-v1_anthropic_cost</td><td class="id">e19d6b0a99e57f82287f8eb0bf61e33b81faac13fc899fad3c76b39d1f0587a8</td></tr><tr><td class="id">snap_demo-support-v1_anthropic_usage</td><td class="id">084982c6f98d9f4a12a46db92ea1be9f09406ab6e55b9f16213f2d7e399d7e1b</td></tr><tr><td class="id">snap_demo-support-v1_openai_cost</td><td class="id">f069aea70ac82e32d2b8de88ff3d9afdcdf549ec33644d43a3f6390a1dd9a3c9</td></tr><tr><td class="id">snap_demo-support-v1_openai_usage</td><td class="id">f023d90537941cb370d7d219d1d2e1bba6b7855d1432fa66216ea5a413ab2915</td></tr>    </tbody></table>
+  </details>
+</main>
+</body>
+</html>

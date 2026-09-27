@@ -1,0 +1,156 @@
+# Integration guide
+
+aiecon has one collection entry point (a LiteLLM callback) and one provider-report entry
+point per provider (read-only report APIs or a normalized file import). Everything else is
+local: raw JSONL, one DuckDB file, JSON/HTML output.
+
+## 1. Collection through the LiteLLM proxy
+
+```bash
+uv sync --locked --extra live                      # pins litellm[proxy]==1.102.1
+cp .env.example .env                               # fill in the keys you have
+uv run aiecon --workspace .aiecon/live init        # live workspace
+uv run aiecon --workspace .aiecon/live doctor --mode live
+uv run litellm --config examples/litellm/config.yaml --port 4000
+```
+
+`examples/litellm/config.yaml` defines two routes, `openai-live` and `anthropic-live`,
+whose real model ids come from `AIECON_OPENAI_MODEL` and `AIECON_ANTHROPIC_MODEL`. Router
+retries and fallbacks are disabled so that every paid attempt is one recorded call.
+
+The callback (`examples/litellm/custom_callbacks.py` -> `aiecon.collect.litellm_callback`)
+uses the three per-attempt deployment hooks documented for LiteLLM 1.102.1:
+
+| hook | what aiecon writes |
+| --- | --- |
+| `async_pre_call_deployment_hook` | `call_started` with a fresh `call_id` (or the id your app supplied) |
+| `async_post_call_success_deployment_hook` | `call_finished` with allowlisted usage |
+| `async_post_call_failure_deployment_hook` | `call_finished` with `status` and an `error_class` code |
+
+Envelopes land in `<workspace>/raw/YYYY-MM-DD/events-<pid>.jsonl`, one JSON object per line,
+flushed on every write. Environment: `AIECON_WORKSPACE`, `AIECON_DATASET_ID` (default
+`live-demo`), `AIECON_SCOPE_ID` (default `litellm_proxy`).
+
+### What your application sends
+
+Put business context under `metadata.aiecon` in the request body (the proxy forwards it in
+`litellm_params.metadata`):
+
+```json
+{
+  "model": "anthropic-live",
+  "messages": [...],
+  "metadata": {
+    "aiecon": {
+      "workflow_id": "support_agent",
+      "workflow_run_id": "run_2026_09_27_0001",
+      "node_id": "reasoning",
+      "node_run_id": "run_2026_09_27_0001_reasoning",
+      "call_id": "call_optional_client_supplied_id",
+      "scope_id": "live_anthropic_workspace",
+      "cache_policy": "ephemeral_5m",
+      "prefix_fingerprint": "<hmac-sha256 hex of the stable prefix>",
+      "fingerprint_key_id": "fpk_...",
+      "prefix_tokens": 5100,
+      "prefix_token_count_method": "provider_count_tokens"
+    }
+  }
+}
+```
+
+Only opaque ids and controlled codes are accepted; anything else is dropped. Lineage is
+derived from `node_run_id`: a later attempt for the same node run is a *retry* when the
+model group is unchanged and a *fallback* otherwise. Nothing is inferred from timing.
+
+Outcomes (`succeeded/failed/abandoned`, per-call `used/discarded` dispositions) are written
+by the application, not by the proxy. `examples/run_workload.py` shows the shape; it writes
+`source_type=application_sdk` envelopes into the same `raw/` directory.
+
+### Prefix fingerprints
+
+`aiecon.privacy.prefix_fingerprint(key, parts)` computes an HMAC-SHA256 over an ordered,
+length-prefixed list of prefix parts (tools, system, leading messages, rendering config).
+The key comes from `AIECON_FINGERPRINT_KEY` and is identified in the data only by
+`fingerprint_key_id`. Reuse is never inferred across scopes, keys or models.
+
+## 2. The live workload
+
+```bash
+uv run python examples/run_workload.py --workspace .aiecon/live --dry-run
+uv run python examples/run_workload.py --workspace .aiecon/live --live --budget-usd 10 --max-calls 40 --yes-spend
+```
+
+Dry run prints the 18-call plan with a conservative reservation per call and sends
+nothing. Live mode reserves before each call, settles with the computed cost after, keeps
+the reservation and stops when a cost cannot be computed, and persists its state in
+`<workspace>/state/spend.json` so a restart continues from the same totals. CI never runs it.
+
+## 3. Local pipeline
+
+```bash
+uv run aiecon --workspace .aiecon/live ingest --input .aiecon/live/raw
+uv run aiecon --workspace .aiecon/live estimate --catalog catalogs/live-demo.json
+uv run aiecon --workspace .aiecon/live billing sync --provider openai --start 2026-09-27 --end 2026-09-29
+uv run aiecon --workspace .aiecon/live billing sync --provider anthropic --start 2026-09-27 --end 2026-09-29
+uv run aiecon --workspace .aiecon/live reconcile --start 2026-09-27 --end 2026-09-29
+uv run aiecon --workspace .aiecon/live report --out .aiecon/live/reports/report.html
+```
+
+`billing sync` needs `OPENAI_ADMIN_API_KEY` / `ANTHROPIC_ADMIN_API_KEY` (admin keys, not
+model keys). It fetches every page first, stages `records.json` + `manifest.json` under
+`<workspace>/provider/sync/<snapshot_id>/`, then imports the snapshot. A failed pull leaves
+the previously active snapshot untouched. Use `--filter <project or workspace id>` so the
+provider side matches the scope your calls carry; comparing an organisation-wide export
+against one project's calls yields `scope_mismatch`, not a number.
+
+Dates are UTC; `--end` is exclusive. Re-pull the last three days regularly: provider data
+is provisional and may be revised.
+
+## 4. File import instead of the API
+
+```bash
+uv run aiecon --workspace .aiecon/live billing import --file export.csv --manifest export.manifest.json
+```
+
+CSV columns, in this order:
+
+```
+record_id,window_start_ms,window_end_ms,dimensions_json,amount_original,amount_unit,currency,usage_json
+```
+
+JSON uses the same fields inside `{"records": [...]}`; `dimensions_json` and `usage_json`
+may be JSON strings or objects. Usage records leave the amount fields empty; cost records
+leave `usage_json` empty. Amount units: `usd` (currency units) or `cents`. The manifest:
+
+```json
+{
+  "schema_version": "0.1",
+  "snapshot_id": "snap_openai_cost_2026-09-27",
+  "provider": "openai",
+  "scope_id": "live_openai_project",
+  "record_kind": "provider_cost",
+  "data_kind": "live",
+  "grain": "1d/line_item,project_id",
+  "query_window": {"start_ms": 1790467200000, "end_ms": 1790640000000},
+  "fetched_at_ms": 1790650000000,
+  "source_ref": "console export costs.csv downloaded 2026-09-29 for project proj_x",
+  "source_hash": "<sha256 of the file>",
+  "finality": "provisional",
+  "snapshot_complete": true
+}
+```
+
+`source_hash` must equal the file's SHA-256; re-importing the same file is a no-op; a new
+complete snapshot for the same provider, scope, kind, grain and window replaces the old one
+as a whole. `record_kind` is `provider_usage`, `provider_cost` or `settled_cost`; nothing
+becomes "settled" by being imported.
+
+## 5. Reading the results
+
+- `report.json` is the machine-readable interface; `report.html` is rendered from it.
+- `report-manifest.json` records versions, run ids, snapshot ids, input hashes and the
+  hashes of the two report files.
+- `aiecon schema export --out schemas/` writes the JSON Schema of every contract.
+- Exit codes: 0 done (variance is not an error), 1 execution failure, 2 configuration or
+  argument error, 3 data-contract conflict (duplicate event id with different content,
+  manifest hash mismatch, wrong data kind).
