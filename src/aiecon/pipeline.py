@@ -1,4 +1,4 @@
-"""Shared orchestration for demo / init / ingest / doctor (PLAN.md section 10).
+"""Shared orchestration for demo / init / ingest / estimate / import / doctor (PLAN.md §10).
 
 Every CLI command goes through these functions so the demo and the live path exercise the
 same code. Functions take ``now_ms`` explicitly; nothing here reads the clock.
@@ -16,14 +16,19 @@ from pathlib import Path
 from typing import Any
 
 from aiecon import __version__
+from aiecon.billing.importer import ImportResult, import_snapshot
 from aiecon.ingest import IngestStats, ingest_paths
+from aiecon.pricing.catalog import load_catalog, load_synthetic_catalog
+from aiecon.pricing.run import PricingRunResult, run_pricing
 from aiecon.spec.common import SCHEMA_VERSION, DataKind
+from aiecon.spec.pricing import PriceCatalog
 from aiecon.storage import Storage, Workspace, WorkspaceError, WorkspaceManifest
 
 DEMO_DATASET_ID = "demo-support-v1"
 DEMO_WORKSPACE_ID = "ws_demo_support_v1"
 DEMO_FIXTURE_DIR = "demo_support_v1"
 DEMO_BANNER = "SYNTHETIC DEMO"
+PROVIDER_FIXTURES = ("openai_usage", "openai_cost", "anthropic_usage", "anthropic_cost")
 
 
 def fixture_root() -> Path:
@@ -34,6 +39,29 @@ def fixture_root() -> Path:
 
 def load_expected_metrics() -> dict[str, Any]:
     return json.loads((fixture_root() / "expected_metrics.json").read_text("utf-8"))
+
+
+def resolve_dataset_id(storage: Storage, requested: str | None) -> str:
+    datasets = storage.list_dataset_ids()
+    if requested is not None:
+        if requested not in datasets:
+            known = ", ".join(datasets) or "none"
+            raise WorkspaceError(f"dataset {requested!r} has no ingested data (known: {known})")
+        return requested
+    if not datasets:
+        raise WorkspaceError("no data ingested yet; run ingest first")
+    if len(datasets) > 1:
+        raise WorkspaceError(
+            f"workspace holds several datasets ({', '.join(datasets)}); pass --dataset-id"
+        )
+    return datasets[0]
+
+
+def _check_catalog_kind(manifest: WorkspaceManifest, catalog: PriceCatalog) -> None:
+    if manifest.data_kind is DataKind.synthetic and catalog.catalog_kind != "synthetic":
+        raise WorkspaceError("a synthetic workspace must be priced with a synthetic catalog")
+    if manifest.data_kind is DataKind.live and catalog.catalog_kind != "real":
+        raise WorkspaceError("a live workspace must be priced with a real (verified) catalog")
 
 
 # -------------------------------------------------------------------------- init
@@ -51,6 +79,37 @@ def run_ingest(workspace_path: Path, inputs: Iterable[Path], *, now_ms: int) -> 
         return ingest_paths(storage, inputs, now_ms=now_ms, workspace_data_kind=manifest.data_kind)
 
 
+# ---------------------------------------------------------------------- estimate
+def run_estimate(
+    workspace_path: Path, catalog_path: Path, *, now_ms: int, dataset_id: str | None = None
+) -> PricingRunResult:
+    workspace = Workspace(workspace_path)
+    manifest = workspace.load_manifest()
+    catalog = load_catalog(catalog_path)
+    _check_catalog_kind(manifest, catalog)
+    with workspace.lock(), Storage.open(workspace.db_path) as storage:
+        storage.apply_schema()
+        dataset = resolve_dataset_id(storage, dataset_id)
+        return run_pricing(storage, dataset, catalog, now_ms=now_ms)
+
+
+# ---------------------------------------------------------------- billing import
+def run_billing_import(
+    workspace_path: Path, *, file_path: Path, manifest_path: Path, now_ms: int
+) -> ImportResult:
+    workspace = Workspace(workspace_path)
+    manifest = workspace.load_manifest()
+    with workspace.lock(), Storage.open(workspace.db_path) as storage:
+        storage.apply_schema()
+        return import_snapshot(
+            storage,
+            file_path=file_path,
+            manifest_path=manifest_path,
+            now_ms=now_ms,
+            workspace_data_kind=manifest.data_kind,
+        )
+
+
 # -------------------------------------------------------------------------- demo
 @dataclass
 class DemoResult:
@@ -60,6 +119,8 @@ class DemoResult:
     outcomes: int
     expected_calls: int
     expected_outcomes: int
+    pricing: PricingRunResult | None = None
+    imports: list[ImportResult] = field(default_factory=list)
     stages: list[str] = field(default_factory=list)
     outputs: dict[str, Path] = field(default_factory=dict)
 
@@ -102,7 +163,7 @@ def _prepare_demo_workspace(out_dir: Path, *, now_ms: int) -> Workspace:
 
 
 def run_demo(out_dir: Path, *, now_ms: int) -> DemoResult:
-    """Fixture load -> ingest (-> estimate -> import -> reconcile -> detect -> report).
+    """Fixture load -> ingest -> estimate -> provider import (-> reconcile -> detect -> report).
 
     Later stages are attached as their tasks land; each one records itself in ``stages``.
     """
@@ -113,13 +174,12 @@ def run_demo(out_dir: Path, *, now_ms: int) -> DemoResult:
 
     raw_day = workspace.raw_dir / "2026-09-26"
     raw_day.mkdir(parents=True, exist_ok=True)
-    events_src = fixture_root() / "events.jsonl"
-    events_dst = raw_day / "events.jsonl"
-    shutil.copyfile(events_src, events_dst)
+    shutil.copyfile(fixture_root() / "events.jsonl", raw_day / "events.jsonl")
     provider_dst = workspace.provider_dir / "fixtures"
     shutil.copytree(fixture_root() / "provider", provider_dst)
     stages.append("fixtures_loaded")
 
+    imports: list[ImportResult] = []
     with workspace.lock(), Storage.open(workspace.db_path) as storage:
         storage.apply_schema()
         stats = ingest_paths(
@@ -129,6 +189,21 @@ def run_demo(out_dir: Path, *, now_ms: int) -> DemoResult:
         calls = storage.count_calls(DEMO_DATASET_ID)
         outcomes = storage.count_outcomes(DEMO_DATASET_ID)
 
+        pricing = run_pricing(storage, DEMO_DATASET_ID, load_synthetic_catalog(), now_ms=now_ms)
+        stages.append("estimated")
+
+        for name in PROVIDER_FIXTURES:
+            imports.append(
+                import_snapshot(
+                    storage,
+                    file_path=provider_dst / f"{name}.json",
+                    manifest_path=provider_dst / f"{name}.manifest.json",
+                    now_ms=now_ms,
+                    workspace_data_kind=DataKind.synthetic,
+                )
+            )
+        stages.append("provider_fixtures_imported")
+
     return DemoResult(
         workspace=workspace.root,
         ingest=stats,
@@ -136,6 +211,8 @@ def run_demo(out_dir: Path, *, now_ms: int) -> DemoResult:
         outcomes=outcomes,
         expected_calls=int(expected["calls"]),
         expected_outcomes=int(expected["runs"]),
+        pricing=pricing,
+        imports=imports,
         stages=stages,
         outputs={"database": workspace.db_path},
     )
@@ -163,10 +240,7 @@ def run_doctor_offline() -> list[Check]:
         "events.jsonl",
         "expected_metrics.json",
         "synthetic-catalog.json",
-        "provider/openai_cost.json",
-        "provider/openai_usage.json",
-        "provider/anthropic_cost.json",
-        "provider/anthropic_usage.json",
+        *(f"provider/{name}.json" for name in PROVIDER_FIXTURES),
     ):
         path = root / relative
         checks.append(Check(f"fixture {relative}", path.exists(), str(path)))

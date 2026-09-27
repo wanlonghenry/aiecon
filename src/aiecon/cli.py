@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 import traceback
 from collections.abc import Callable
@@ -12,6 +11,7 @@ from typing import Annotated, Any
 import typer
 
 from aiecon import __version__
+from aiecon.billing.importer import BillingImportError
 from aiecon.config import (
     ADMIN_KEY_ENVS,
     FINGERPRINT_KEY_ENV,
@@ -23,6 +23,7 @@ from aiecon.config import (
     now_ms,
     resolve_workspace,
 )
+from aiecon.pricing.catalog import CatalogError
 from aiecon.spec.common import DataKind
 from aiecon.storage import WorkspaceError
 
@@ -51,6 +52,9 @@ WorkspaceOpt = Annotated[
         help="Workspace directory (default: AIECON_WORKSPACE env or .aiecon/live)",
     ),
 ]
+DatasetOpt = Annotated[
+    str | None, typer.Option("--dataset-id", help="Dataset to use when the workspace holds several")
+]
 
 
 def _workspace(ctx: typer.Context) -> Path:
@@ -74,6 +78,9 @@ def _guard(fn: Callable[[], int]) -> None:
     except FileNotFoundError as exc:
         typer.echo(f"configuration error: file not found: {exc}", err=True)
         raise typer.Exit(EXIT_CONFIG) from None
+    except (BillingImportError, CatalogError) as exc:
+        typer.echo(f"data contract error: {exc}", err=True)
+        raise typer.Exit(EXIT_CONTRACT) from None
     except typer.Exit:
         raise
     except Exception as exc:  # noqa: BLE001 - CLI boundary
@@ -162,33 +169,22 @@ def _live_checks(ctx: typer.Context) -> list[Any]:
     except ImportError:
         checks.append(Check("litellm", False, "not installed; run: uv sync --locked --extra live"))
     for name in MODEL_KEY_ENVS:
-        checks.append(
-            Check(f"env {name}", env_present(name), "present" if env_present(name) else "missing")
-        )
+        present = env_present(name)
+        checks.append(Check(f"env {name}", present, "present" if present else "missing"))
     for provider, name in ADMIN_KEY_ENVS.items():
         present = env_present(name)
-        checks.append(
-            Check(
-                f"env {name}",
-                True,
-                "present"
-                if present
-                else f"missing (billing sync --provider {provider} unavailable)",
-            )
+        detail = (
+            "present" if present else f"missing (billing sync --provider {provider} unavailable)"
         )
+        checks.append(Check(f"env {name}", True, detail))
     for provider, name in LIVE_MODEL_ENVS.items():
         value = env_value_non_secret(name)
         checks.append(
             Check(f"env {name}", value is not None, value or f"missing ({provider} model id)")
         )
     fp = env_present(FINGERPRINT_KEY_ENV)
-    checks.append(
-        Check(
-            f"env {FINGERPRINT_KEY_ENV}",
-            True,
-            "present" if fp else "missing (prefix fingerprints disabled)",
-        )
-    )
+    detail = "present" if fp else "missing (prefix fingerprints disabled)"
+    checks.append(Check(f"env {FINGERPRINT_KEY_ENV}", True, detail))
     path = _workspace(ctx)
     checks.append(Check("workspace", (path / "state" / "workspace.json").exists(), str(path)))
     return checks
@@ -208,14 +204,76 @@ def ingest(
 
         stats = run_ingest(_workspace(ctx), input, now_ms=now_ms())
         summary = stats.to_dict()
-        _echo_kv(
-            {k: v for k, v in summary.items() if k not in ("rejected_lines", "conflict_event_ids")}
-        )
+        skip = {"rejected_lines", "conflict_event_ids"}
+        _echo_kv({k: v for k, v in summary.items() if k not in skip})
         for item in summary["rejected_lines"]:
             typer.echo(f"rejected  {item['file']}:{item['line']}  {item['error']}")
         for event_id in summary["conflict_event_ids"]:
             typer.echo(f"conflict  event_id={event_id} (original kept)")
         return EXIT_CONTRACT if stats.conflicts else EXIT_OK
+
+    _guard(run)
+
+
+@app.command()
+def estimate(
+    ctx: typer.Context,
+    catalog: Annotated[Path, typer.Option("--catalog", help="Price catalog JSON file")],
+    dataset_id: DatasetOpt = None,
+) -> None:
+    """Price every ingested call with the catalog and register the pricing run."""
+
+    def run() -> int:
+        from aiecon.pipeline import run_estimate
+
+        result = run_estimate(_workspace(ctx), catalog, now_ms=now_ms(), dataset_id=dataset_id)
+        m = result.manifest
+        _echo_kv(
+            {
+                "pricing_run_id": m.pricing_run_id,
+                "dataset_id": m.dataset_id,
+                "catalog": f"{m.catalog_version} ({m.catalog_kind}, hash {m.catalog_hash[:12]})",
+                "calls": m.call_count,
+                "priced/partial/unpriced": (
+                    f"{m.priced_call_count}/{m.partially_priced_call_count}/{m.unpriced_call_count}"
+                ),
+                "line_items": m.line_item_count,
+                "known_cost_subtotal_usd": format(m.known_cost_subtotal_usd, "f"),
+                "cost_complete": m.cost_complete,
+                "replaced_existing_run": result.replaced_existing,
+            }
+        )
+        return EXIT_OK
+
+    _guard(run)
+
+
+@billing_app.command("import")
+def billing_import(
+    ctx: typer.Context,
+    file: Annotated[Path, typer.Option("--file", help="Normalized CSV or JSON records")],
+    manifest: Annotated[Path, typer.Option("--manifest", help="Snapshot manifest JSON")],
+) -> None:
+    """Import a complete provider usage/cost snapshot with its provenance manifest."""
+
+    def run() -> int:
+        from aiecon.pipeline import run_billing_import
+
+        result = run_billing_import(
+            _workspace(ctx), file_path=file, manifest_path=manifest, now_ms=now_ms()
+        )
+        total = None if result.total_amount_usd is None else format(result.total_amount_usd, "f")
+        _echo_kv(
+            {
+                "snapshot_id": result.snapshot_id,
+                "records": result.record_count,
+                "skipped_same_hash": result.skipped_same_hash,
+                "deactivated_snapshots": ", ".join(result.deactivated_snapshot_ids) or "-",
+                "non_usd_records": result.non_usd_records,
+                "total_amount_usd": total if total is not None else "n/a (usage snapshot)",
+            }
+        )
+        return EXIT_OK
 
     _guard(run)
 
@@ -232,6 +290,7 @@ def demo(
         from aiecon.pipeline import DEMO_BANNER, run_demo
 
         result = run_demo(out, now_ms=now_ms())
+        pricing = result.pricing.manifest if result.pricing else None
         _echo_kv(
             {
                 "workspace": str(result.workspace.resolve()),
@@ -241,6 +300,14 @@ def demo(
                 "outcomes": f"{result.outcomes} (expected {result.expected_outcomes})",
                 "duplicates/conflicts/rejected": (
                     f"{result.ingest.duplicates}/{result.ingest.conflicts}/{result.ingest.rejected}"
+                ),
+                "pricing_run": pricing.pricing_run_id if pricing else "-",
+                "known_cost_subtotal_usd": (
+                    format(pricing.known_cost_subtotal_usd, "f") if pricing else "-"
+                ),
+                "unpriced_calls": pricing.unpriced_call_count if pricing else "-",
+                "provider_snapshots": ", ".join(
+                    f"{i.snapshot_id}:{i.record_count}" for i in result.imports
                 ),
             }
         )
@@ -271,10 +338,6 @@ def schema_export(
         return EXIT_OK
 
     _guard(run)
-
-
-def _print_json(data: Any) -> None:
-    typer.echo(json.dumps(data, indent=2, sort_keys=True, default=str))
 
 
 if __name__ == "__main__":  # pragma: no cover
