@@ -793,8 +793,8 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
 | T5.1 | done | all 8 report sections from one Report model; JSON decimals as strings; nulls render Unknown/Not comparable; no script/link/url(); monthly projection labeled; manifest with hashes; 4 report tests |
-| T5.2 | 完整 `demo`、README quickstart、包数据配置 | 新目录 fresh clone 后执行 quickstart 成功；安装 wheel 后离开 repo 也可运行 demo |
-| T5.3 | sample report、demo script、live report | 3 分钟可演示；样例只用 synthetic；实际 L1 结果按供应商分别记录覆盖范围 |
+| T5.2 | done | uv build wheel installed into a fresh venv; demo ran from an unrelated directory with a dead proxy (fixtures, template, schema.sql packaged; doctor 15/15); README quickstart in T7.1 |
+| T5.3 | done | docs/demo-script.md (3 minutes incl. data source check and one evidenced finding), docs/sample-report.html from the wheel run (synthetic banner); live report pending keys |
 
 **Day 5 可见结果：** 一份可以让外部开发者自行运行的完整公开 demo。
 
