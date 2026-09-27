@@ -67,6 +67,7 @@ class ModelCall(SpecModel):
     # time & status
     started_at_ms: UtcMs | None = None
     ended_at_ms: UtcMs | None = None
+    provider_created_at_ms: UtcMs | None = None
     status: CallStatus
     error_class: CodeStr | None = None
 

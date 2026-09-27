@@ -2,25 +2,35 @@
 
 Two layers:
 
-* :class:`EnvelopeCollector` is LiteLLM-agnostic and fully testable: it turns the per-attempt
-  deployment hook arguments (plain dicts / objects) into allowlisted ``RawEnvelope`` records.
+* :class:`EnvelopeCollector` is LiteLLM-agnostic and fully testable: it turns the hook
+  arguments (plain dicts / objects) into allowlisted ``RawEnvelope`` records.
 * :class:`AieconLiteLLMLogger` is the thin ``CustomLogger`` subclass registered in the proxy
-  config. It only forwards the three per-attempt deployment hooks. Request-level hooks are
-  deliberately not used because they fire once per logical request (S5).
+  config.
 
-Shape of the hook arguments as observed with LiteLLM 1.102.1 (probe on 2026-09-27): the
-pre-call kwargs carry the bare deployment ``model`` (``gpt-5-nano``), ``max_tokens``,
-``stream``, ``litellm_call_id``, ``litellm_trace_id``, ``api_key`` and a ``metadata`` dict
-with ``model_group``, ``deployment``, ``deployment_model_name`` and ``model_info``; there is
-no ``litellm_params`` key. The failure hook receives a read-only view of the same kwargs and
-an exception whose ``llm_provider`` names the provider. Only the named fields below are ever
-read; ``api_key``, ``messages`` and anything else are never touched.
+Which hooks carry which fact (probed against LiteLLM 1.102.1 on 2026-09-27, via ``Router``
+with mock responses and via the proxy):
 
-Every attempt gets its own ``call_id`` in ``async_pre_call_deployment_hook``. The id is
-attached to *that attempt's* request data (a copied metadata dict, never a shared one) so the
-success/failure hook can find it. Lineage is derived from the application-supplied
-``node_run_id``: a later attempt for the same node run is a retry when the model group is
-unchanged and a fallback otherwise. Nothing is inferred from timing.
+* ``async_pre_call_deployment_hook`` fires once per physical attempt with the bare deployment
+  ``model``, ``max_tokens``, ``stream``, ``litellm_call_id``, ``litellm_trace_id``,
+  ``api_key``, ``messages`` and a ``metadata`` dict (``model_group``, ``deployment``, ...).
+  aiecon allocates the attempt ``call_id`` here and writes ``call_started``.
+* ``async_post_call_success_deployment_hook`` fires for non-streaming attempts only, with the
+  ``ModelResponse``. ``async_post_call_failure_deployment_hook`` fires for failed attempts.
+* For **streaming** attempts no deployment success hook fires. The terminal state comes from
+  ``async_log_success_event`` (once the stream has been consumed, with the rebuilt response
+  and its final usage) or ``async_log_failure_event``. Both carry our ``aiecon_call_id`` in
+  ``litellm_params.metadata``. A stream the client abandons produces no terminal event at
+  all: the call stays ``in_flight`` with unknown cost, by design.
+
+The first terminal notification for an attempt wins; later ones for the same attempt (the
+log event after a deployment hook, a redelivery) are counted and ignored, so a call never
+gets two terminal envelopes. ``ended_at_ms`` is the local clock at the first terminal;
+the provider's ``created`` timestamp is kept separately and never used as an end time.
+
+Only the named fields are ever read; ``api_key``, ``messages`` and everything else are
+never touched. Lineage is derived from the application-supplied ``node_run_id``: a later
+attempt for the same node run is a retry when the model group is unchanged and a fallback
+otherwise. Nothing is inferred from timing.
 """
 
 from __future__ import annotations
@@ -167,6 +177,8 @@ class _Attempt:
     model_group: str
     context: EventContext
     started_written: bool = True
+    terminal_written: bool = False
+    finished_at_ms: int | None = None
 
 
 @dataclass
@@ -179,6 +191,8 @@ class EnvelopeCollector:
     _used_ids: set[str] = field(default_factory=set)
     hook_errors: int = 0
     last_hook_error_class: str | None = None
+    terminal_duplicates_ignored: int = 0
+    terminals_without_start: int = 0
 
     # ------------------------------------------------------------ helpers
     @staticmethod
@@ -372,16 +386,20 @@ class EnvelopeCollector:
         provider_hint: Any = None,
     ) -> bool:
         call_id = self.call_id_from(request_data)
-        # attempts stay in memory (pruned by age) so a redelivered hook rebuilds the same body
         attempt = self._attempts.get(call_id) if call_id else None
-        created = _safe_int(_get(response, "created")) if response is not None else None
-        if created is not None and 1_000_000_000 < created < 4_102_444_800:
-            ts = created * 1000  # provider-reported creation time: stable across redelivery
+        if attempt is not None and attempt.terminal_written:
+            # a second terminal notification for the same attempt (log event after the
+            # deployment hook, or a redelivery): the first terminal state stands
+            self.terminal_duplicates_ignored += 1
+            return True
+        if attempt is not None and attempt.finished_at_ms is not None:
+            ts = attempt.finished_at_ms
         else:
             ts = self.clock()
         if call_id is None:
             # finish without a matching start: still record the attempt, as its own call
             call_id = f"call_{uuid.uuid4().hex}"
+            self.terminals_without_start += 1
         meta = self._app_meta(request_data)
         if attempt is not None:
             context = attempt.context
@@ -406,6 +424,7 @@ class EnvelopeCollector:
         model_resolved = None
         upstream_cost = None
         provider_request_id = None
+        provider_created_at_ms = None
         if response is not None:
             usage_obj = _get(response, "usage")
             if usage_obj is not None:
@@ -415,6 +434,9 @@ class EnvelopeCollector:
                     safe_usage = None
             model_resolved = _safe_id(_get(response, "model"))
             provider_request_id = _safe_id(_get(response, "id"))
+            created = _safe_int(_get(response, "created"))
+            if created is not None and 1_000_000_000 < created < 4_102_444_800:
+                provider_created_at_ms = created * 1000
             hidden = _get(response, "_hidden_params")
             upstream_cost = _safe_decimal(_get(hidden, "response_cost")) if hidden else None
             hidden_provider = _get(hidden, "custom_llm_provider") if hidden else None
@@ -435,17 +457,22 @@ class EnvelopeCollector:
             error_class=error_class,
             provider_request_id=provider_request_id,
             started_at_ms=started,
+            provider_created_at_ms=provider_created_at_ms,
             usage_format=UsageFormat.litellm_standard if safe_usage else UsageFormat.unknown,
             usage=safe_usage,
             upstream_cost_estimate_usd=upstream_cost,
             schema_drift=drift,
             **self._prefix_fields(meta),
         )
-        return self.writer.write(
+        written = self.writer.write(
             self._envelope(
                 f"ev_{call_id}_finished_1", EventType.call_finished, ts, context, payload
             )
         )
+        if attempt is not None:
+            attempt.finished_at_ms = ts
+            attempt.terminal_written = written
+        return written
 
     def finish_success(
         self, request_data: Mapping[str, Any], response: Any, call_type: str
@@ -476,12 +503,31 @@ class EnvelopeCollector:
             provider_hint=getattr(exception, "llm_provider", None),
         )
 
+    def finish_from_log_event(
+        self, kwargs: Mapping[str, Any], response_obj: Any, *, success: bool
+    ) -> bool:
+        """Terminal state from the request-level log event.
+
+        This is the only terminal source for streaming attempts (no deployment success hook
+        fires for streams). For non-streaming attempts it arrives after the deployment hook
+        and is ignored as a duplicate.
+        """
+
+        if success:
+            return self.finish_success(kwargs, response_obj, "log_event")
+        exception = kwargs.get("exception")
+        if not isinstance(exception, BaseException):
+            exception = RuntimeError("unknown failure")
+        return self.finish_failure(kwargs, exception, "log_event")
+
     def health(self) -> dict[str, Any]:
         return {
             **self.writer.health(),
-            "open_attempts": len(self._attempts),
+            "open_attempts": sum(1 for a in self._attempts.values() if not a.terminal_written),
             "hook_errors": self.hook_errors,
             "last_hook_error_class": self.last_hook_error_class,
+            "terminal_duplicates_ignored": self.terminal_duplicates_ignored,
+            "terminals_without_start": self.terminals_without_start,
         }
 
     def _guard(self, fn: Callable[[], Any], fallback: Any) -> Any:
@@ -494,7 +540,8 @@ class EnvelopeCollector:
 
 
 class AieconLiteLLMLogger(CustomLogger):
-    """LiteLLM ``CustomLogger`` forwarding the three per-attempt deployment hooks.
+    """LiteLLM ``CustomLogger``: per-attempt deployment hooks plus the log events that carry
+    the terminal state of streaming attempts.
 
     Proxy config: ``litellm_settings.callbacks: custom_callbacks.proxy_handler_instance``.
     """
@@ -526,6 +573,7 @@ class AieconLiteLLMLogger(CustomLogger):
         )
         return cls(EnvelopeCollector(writer=writer, config=config))
 
+    # per-attempt deployment hooks -------------------------------------------------
     async def async_pre_call_deployment_hook(
         self, kwargs: dict[str, Any], call_type: Any
     ) -> dict[str, Any]:
@@ -551,5 +599,38 @@ class AieconLiteLLMLogger(CustomLogger):
             lambda: self.collector.finish_failure(
                 request_data, exception, str(call_type), fallback_depth
             ),
+            None,
+        )
+
+    # request-level log events: terminal state for streams --------------------------
+    async def async_log_success_event(
+        self, kwargs: dict[str, Any], response_obj: Any, start_time: Any, end_time: Any
+    ) -> None:
+        self.collector._guard(
+            lambda: self.collector.finish_from_log_event(kwargs, response_obj, success=True),
+            None,
+        )
+
+    async def async_log_failure_event(
+        self, kwargs: dict[str, Any], response_obj: Any, start_time: Any, end_time: Any
+    ) -> None:
+        self.collector._guard(
+            lambda: self.collector.finish_from_log_event(kwargs, response_obj, success=False),
+            None,
+        )
+
+    def log_success_event(
+        self, kwargs: dict[str, Any], response_obj: Any, start_time: Any, end_time: Any
+    ) -> None:
+        self.collector._guard(
+            lambda: self.collector.finish_from_log_event(kwargs, response_obj, success=True),
+            None,
+        )
+
+    def log_failure_event(
+        self, kwargs: dict[str, Any], response_obj: Any, start_time: Any, end_time: Any
+    ) -> None:
+        self.collector._guard(
+            lambda: self.collector.finish_from_log_event(kwargs, response_obj, success=False),
             None,
         )

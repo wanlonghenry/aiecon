@@ -162,6 +162,10 @@ class CallFinishedPayload(SpecModel):
         default=None,
         description="Dispatch time if the collector knows it (finish-only pipelines)",
     )
+    provider_created_at_ms: UtcMs | None = Field(
+        default=None,
+        description="Provider-reported response creation time; evidence only, never an end time",
+    )
     usage_format: UsageFormat = UsageFormat.unknown
     usage: SafeUsage | None = None
     upstream_cost_estimate_usd: DecimalStr | None = Field(

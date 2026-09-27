@@ -106,6 +106,7 @@ def normalize(envelope: RawEnvelope) -> ModelCall:
         stream=payload.stream,
         started_at_ms=payload.started_at_ms,
         ended_at_ms=envelope.occurred_at_ms,
+        provider_created_at_ms=payload.provider_created_at_ms,
         status=payload.status,
         error_class=payload.error_class,
         usage_format=payload.usage_format,

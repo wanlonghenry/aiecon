@@ -63,7 +63,9 @@ def normalize_litellm(usage: Mapping[str, Any] | None) -> NormalizedUsage:
     if read is None and has_key(usage, "prompt_tokens_details", "cached_tokens"):
         read = get_int(usage, "prompt_tokens_details", "cached_tokens")
     if read is None:
-        result.note("cache_read_field_absent")
+        # LiteLLM only fills the cache counters when the provider reported cache usage
+        read = 0
+        result.note("cache_read_absent_treated_as_zero")
     result.input_cache_read = read
 
     write = None

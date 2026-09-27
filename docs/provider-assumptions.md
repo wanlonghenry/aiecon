@@ -93,8 +93,16 @@ LiteLLM's transformed `Usage` object is OpenAI-shaped. For Anthropic responses i
 folds cache tokens into `prompt_tokens` and exposes `cache_creation_input_tokens`,
 `cache_read_input_tokens` and `cache_creation_token_details` next to it. The adapter treats
 `prompt_tokens` as the total and subtracts the cache classes; applying the native Anthropic
-sum again would double count. The exact layout for 1.102.1 is captured as fixtures in T2.2
-and every field outside the allowlist is counted as `schema_drift` by name only.
+sum again would double count. Every field outside the allowlist is counted as
+`schema_drift` by name only.
+
+Contract for absent cache counters in this format: LiteLLM only populates
+`prompt_tokens_details.cached_tokens` / `cache_read_input_tokens` and the cache-creation
+counters when the provider reported cache usage; a `null` or absent counter therefore means
+"no cache usage reported" and the adapter records `0` with the notes
+`cache_read_absent_treated_as_zero` / `cache_write_absent_treated_as_zero` (observed with
+LiteLLM 1.102.1 mock responses, whose `prompt_tokens_details` is `null`). The native
+`openai_*` formats keep the stricter rule (absent split = `partial`).
 
 ## Cache billing contracts
 

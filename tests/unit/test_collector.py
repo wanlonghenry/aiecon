@@ -134,11 +134,13 @@ def test_redelivered_success_hook_does_not_create_a_fourth_call(tmp_path: Path) 
     kwargs = collector.begin_attempt(request("gpt-fixture"), "completion")
     collector.finish_success(kwargs, response("gpt-fixture-v1"), "completion")
     collector.finish_success(kwargs, response("gpt-fixture-v1"), "completion")  # redelivery
+    # the first terminal state stands; the redelivery is counted and writes nothing
+    assert collector.writer.health()["written"] == 2
+    assert collector.health()["terminal_duplicates_ignored"] == 1
     storage, stats = ingest(tmp_path, raw)
     try:
         assert storage.count_calls("live-test") == 1
-        # the redelivered hook rebuilds the byte-identical envelope: an exact duplicate
-        assert stats.accepted == 2 and stats.duplicates == 1 and stats.conflicts == 0
+        assert stats.accepted == 2 and stats.duplicates == 0 and stats.conflicts == 0
     finally:
         storage.close()
 
