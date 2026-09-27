@@ -1,0 +1,24 @@
+{
+  "usage_format": "litellm_standard",
+  "source": "S5 LiteLLM transformed Usage for an Anthropic response: prompt_tokens already includes cache read and creation tokens; cache_creation_input_tokens, cache_read_input_tokens and cache_creation_token_details are exposed alongside",
+  "captured_from": "hand-written from LiteLLM 1.102.1 documentation; NOT yet captured from a live run (see docs/provider-assumptions.md)",
+  "usage": {
+    "prompt_tokens": 4096,
+    "completion_tokens": 503,
+    "total_tokens": 4599,
+    "prompt_tokens_details": {"cached_tokens": 1800},
+    "cache_creation_input_tokens": 248,
+    "cache_read_input_tokens": 1800,
+    "cache_creation_token_details": {"ephemeral_5m_input_tokens": 148, "ephemeral_1h_input_tokens": 100}
+  },
+  "expected": {
+    "input_total": 4096,
+    "input_uncached": 2048,
+    "input_cache_read": 1800,
+    "input_cache_write": 248,
+    "output": 503,
+    "cache_write_breakdown": {"ephemeral_5m": 148, "ephemeral_1h": 100},
+    "completeness": "complete",
+    "notes": []
+  }
+}

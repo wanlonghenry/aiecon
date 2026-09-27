@@ -1,0 +1,34 @@
+# LiteLLM proxy config for the aiecon live workload (PLAN.md section 10.3).
+#
+#   uv sync --locked --extra live
+#   uv run litellm --config examples/litellm/config.yaml --port 4000
+#
+# Two explicit routes. Real model ids come from the environment so nothing about current
+# provider pricing is hard-coded here; they must resolve in catalogs/live-demo.json.
+# Router retries and fallbacks are disabled on purpose: the workload script performs every
+# retry/fallback explicitly so each paid attempt is one recorded call.
+
+model_list:
+  - model_name: openai-live
+    litellm_params:
+      model: os.environ/AIECON_OPENAI_MODEL
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: anthropic-live
+    litellm_params:
+      model: os.environ/AIECON_ANTHROPIC_MODEL
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+litellm_settings:
+  callbacks: custom_callbacks.proxy_handler_instance
+  num_retries: 0
+  request_timeout: 60
+  drop_params: true
+
+router_settings:
+  num_retries: 0
+  allowed_fails: 100
+  cooldown_time: 0
+
+general_settings:
+  # single worker keeps one serial JSONL writer per process (PLAN.md section 3.2)
+  disable_spend_logs: true

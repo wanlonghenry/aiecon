@@ -1,0 +1,22 @@
+{
+  "usage_format": "anthropic_messages",
+  "source": "S4 prompt caching guide extended usage example (platform.claude.com, fetched 2026-09-26): input_tokens 2048, cache_read_input_tokens 1800, cache_creation_input_tokens 248, cache_creation {ephemeral_5m_input_tokens 148, ephemeral_1h_input_tokens 100}, output_tokens 503",
+  "captured_from": "verbatim documentation example",
+  "usage": {
+    "input_tokens": 2048,
+    "cache_read_input_tokens": 1800,
+    "cache_creation_input_tokens": 248,
+    "output_tokens": 503,
+    "cache_creation": {"ephemeral_5m_input_tokens": 148, "ephemeral_1h_input_tokens": 100}
+  },
+  "expected": {
+    "input_total": 4096,
+    "input_uncached": 2048,
+    "input_cache_read": 1800,
+    "input_cache_write": 248,
+    "output": 503,
+    "cache_write_breakdown": {"ephemeral_5m": 148, "ephemeral_1h": 100},
+    "completeness": "complete",
+    "notes": []
+  }
+}

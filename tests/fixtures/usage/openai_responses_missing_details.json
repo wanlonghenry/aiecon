@@ -1,0 +1,19 @@
+{
+  "usage_format": "openai_responses",
+  "source": "Responses usage without input_tokens_details: the cached/uncached split is unknown and must stay unknown",
+  "captured_from": "hand-written edge case",
+  "usage": {
+    "input_tokens": 1000,
+    "output_tokens": 100
+  },
+  "expected": {
+    "input_total": 1000,
+    "input_uncached": null,
+    "input_cache_read": null,
+    "input_cache_write": 0,
+    "output": 100,
+    "cache_write_breakdown": null,
+    "completeness": "partial",
+    "notes": ["cache_read_field_absent", "cache_write_field_absent"]
+  }
+}

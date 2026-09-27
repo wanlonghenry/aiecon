@@ -1,0 +1,22 @@
+{
+  "usage_format": "openai_chat_completions",
+  "source": "S3 Chat Completions CompletionUsage (OpenAPI spec 2.3.0): prompt_tokens, completion_tokens, prompt_tokens_details.cached_tokens, completion_tokens_details.reasoning_tokens (reasoning tokens are counted in completion_tokens)",
+  "captured_from": "hand-written from the documented schema; values are illustrative",
+  "usage": {
+    "prompt_tokens": 1500,
+    "completion_tokens": 700,
+    "total_tokens": 2200,
+    "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 0},
+    "completion_tokens_details": {"reasoning_tokens": 300, "audio_tokens": 0}
+  },
+  "expected": {
+    "input_total": 1500,
+    "input_uncached": 1500,
+    "input_cache_read": 0,
+    "input_cache_write": 0,
+    "output": 700,
+    "cache_write_breakdown": null,
+    "completeness": "complete",
+    "notes": ["cache_write_field_absent"]
+  }
+}

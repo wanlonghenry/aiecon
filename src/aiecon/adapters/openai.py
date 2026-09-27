@@ -16,7 +16,7 @@ Contract encoded here (see docs/provider-assumptions.md for the verified referen
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from aiecon.adapters.base import NormalizedUsage, finish, get_int, has_key
@@ -97,3 +97,21 @@ def normalize_responses(usage: Mapping[str, Any] | None) -> NormalizedUsage:
         output_key="output_tokens",
         details_key="input_tokens_details",
     )
+
+
+def final_stream_usage(chunks: Iterable[Mapping[str, Any]]) -> Mapping[str, Any] | None:
+    """Usage of a Chat Completions stream: only the terminal chunk carries it.
+
+    With ``stream_options.include_usage`` every chunk has ``usage: null`` except the last one
+    ("The usage field on this chunk shows the token usage statistics for the entire
+    request"). An interrupted stream therefore yields ``None`` - unknown, never zero.
+    """
+
+    final: Mapping[str, Any] | None = None
+    for chunk in chunks:
+        if not isinstance(chunk, Mapping):
+            continue
+        usage = chunk.get("usage")
+        if isinstance(usage, Mapping) and usage:
+            final = usage
+    return final

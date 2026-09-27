@@ -1,0 +1,22 @@
+{
+  "usage_format": "litellm_standard",
+  "source": "S5 LiteLLM transformed Usage for an OpenAI chat response: OpenAI-shaped fields, no cache-creation counters",
+  "captured_from": "hand-written from LiteLLM 1.102.1 documentation; NOT yet captured from a live run (see docs/provider-assumptions.md)",
+  "usage": {
+    "prompt_tokens": 12000,
+    "completion_tokens": 500,
+    "total_tokens": 12500,
+    "prompt_tokens_details": {"cached_tokens": 8000, "audio_tokens": 0},
+    "completion_tokens_details": {"reasoning_tokens": 120, "audio_tokens": 0}
+  },
+  "expected": {
+    "input_total": 12000,
+    "input_uncached": 4000,
+    "input_cache_read": 8000,
+    "input_cache_write": 0,
+    "output": 500,
+    "cache_write_breakdown": null,
+    "completeness": "complete",
+    "notes": ["cache_write_absent_treated_as_zero"]
+  }
+}

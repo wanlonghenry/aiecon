@@ -1,0 +1,22 @@
+{
+  "usage_format": "openai_responses",
+  "source": "S3 Responses API ResponseUsage (developers.openai.com, fetched 2026-09-26): input_tokens, input_tokens_details.cached_tokens, input_tokens_details.cache_write_tokens, output_tokens, output_tokens_details.reasoning_tokens",
+  "captured_from": "hand-written from the documented schema; values are illustrative",
+  "usage": {
+    "input_tokens": 12000,
+    "input_tokens_details": {"cached_tokens": 8000, "cache_write_tokens": 2000},
+    "output_tokens": 500,
+    "output_tokens_details": {"reasoning_tokens": 120},
+    "total_tokens": 12500
+  },
+  "expected": {
+    "input_total": 12000,
+    "input_uncached": 2000,
+    "input_cache_read": 8000,
+    "input_cache_write": 2000,
+    "output": 500,
+    "cache_write_breakdown": null,
+    "completeness": "complete",
+    "notes": []
+  }
+}

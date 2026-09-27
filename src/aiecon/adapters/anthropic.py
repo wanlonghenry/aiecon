@@ -89,3 +89,23 @@ def normalize_messages(usage: Mapping[str, Any] | None) -> NormalizedUsage:
     if all(v is not None for v in parts):
         result.input_total = sum(v for v in parts if v is not None)
     return finish(result)
+
+
+def merge_stream_usage(
+    message_start_usage: Mapping[str, Any] | None,
+    final_delta_usage: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Combine ``message_start.usage`` with the *last* ``message_delta.usage``.
+
+    Delta counts are cumulative ("The token counts shown in the usage field of the
+    message_delta event are cumulative"), so the final delta replaces earlier values and is
+    never added to them. Fields the delta reports as ``null`` keep the message_start value.
+    """
+
+    if message_start_usage is None and final_delta_usage is None:
+        return None
+    merged: dict[str, Any] = dict(message_start_usage or {})
+    for key, value in (final_delta_usage or {}).items():
+        if value is not None:
+            merged[key] = value
+    return merged
