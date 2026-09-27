@@ -811,8 +811,8 @@ Day 2 开始发送，给后续成本数据留下获取时间。先确认能够�
 
 | ID | 修改文件 / 产出 | 验收与停止条件 |
 | --- | --- | --- |
-| T7.1 | doing | README per section 15.1 written; docs commands verified by tests; release steps pending |
-| T7.2 | tag `v0.1.0`、GitHub Release、synthetic demo screenshot | tag 对应 CI 通过的 commit；release 描述与实际能力一致；完整代码在同一 public repo |
+| T7.1 | done | README (section 15.1 order), docs/architecture.md, integration, schema, pricing, provider-assumptions, demo-script, KNOWN_LIMITATIONS; every documented command is exercised by tests except billing sync live |
+| T7.2 | blocked | needs one interactive GitHub login (gh auth login or the GCM browser sign-in): gh has no auth and Git Credential Manager opens a dialog on push; after login: push main, wait for CI, tag v0.1.0 on the green commit, gh release create with scratchpad/release-notes-v0.1.0.md |
 
 Day 7 不新增功能。有空余时间只补充真实对账覆盖、修复已发现错误、改进 demo 易用性。
 
