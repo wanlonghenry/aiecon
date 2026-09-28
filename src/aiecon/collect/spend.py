@@ -88,6 +88,19 @@ class SpendFuse:
         )
 
     # ------------------------------------------------------------- control
+    def clear_stop(self) -> str | None:
+        """Lift a persisted stop latch on explicit request; returns the reason that was set.
+
+        Known spend and the amounts held for unknown-cost calls stay committed against the
+        budget, so clearing the latch never frees money; it only allows the next reservation
+        to be checked again.
+        """
+
+        reason = self.state.stopped_reason
+        self.state.stopped_reason = None
+        self._save()
+        return reason
+
     def check(self, reserve_usd: Decimal) -> tuple[bool, str]:
         if self.state.stopped_reason:
             return False, self.state.stopped_reason

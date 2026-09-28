@@ -387,7 +387,27 @@ def main() -> int:
     parser.add_argument(
         "--yes-spend", action="store_true", help="confirm that real money will be spent"
     )
+    parser.add_argument(
+        "--providers",
+        default="openai,anthropic",
+        help=(
+            "comma-separated subset of openai,anthropic; runs that involve another provider "
+            "(the cross-provider fallback pairs) are dropped as a whole"
+        ),
+    )
+    parser.add_argument(
+        "--clear-stop",
+        action="store_true",
+        help=(
+            "lift a stop latch persisted by an earlier run (e.g. unknown_cost); held amounts "
+            "stay committed against the budget"
+        ),
+    )
     args = parser.parse_args()
+    allowed = {p.strip() for p in args.providers.split(",") if p.strip()}
+    if not allowed or not allowed <= set(ROUTES):
+        print(f"--providers must be a subset of {','.join(ROUTES)}", file=sys.stderr)
+        return 2
 
     workspace = Workspace(resolve_workspace(args.workspace))
     index = CatalogIndex(load_catalog(args.catalog))
@@ -401,6 +421,12 @@ def main() -> int:
 
     prefix = synthetic_prefix()
     steps = build_plan(prefix)
+    by_run: dict[str, list[Step]] = {}
+    for s in steps:
+        by_run.setdefault(s.run_id, []).append(s)
+    steps = [s for s in steps if all(t.provider in allowed for t in by_run[s.run_id])]
+    if len(allowed) < len(ROUTES):
+        print(f"providers restricted to {', '.join(sorted(allowed))}: {len(steps)} calls kept")
     ts = now_ms()
     print(f"\nplan: {len(steps)} calls, max output {MAX_OUTPUT_TOKENS} tokens each")
     total_reserve = Decimal(0)
@@ -432,7 +458,7 @@ def main() -> int:
             "refusing to spend: --live requires --budget-usd > 0 and --yes-spend", file=sys.stderr
         )
         return 2
-    if any(m is None for m in models.values()):
+    if any(models[p] is None for p in allowed):
         print("refusing to spend: a live model is unknown to the catalog", file=sys.stderr)
         return 2
     if not workspace.exists:
@@ -445,6 +471,20 @@ def main() -> int:
     fuse = SpendFuse(
         workspace.state_dir / "spend.json", budget_usd=args.budget_usd, max_calls=args.max_calls
     )
+    if args.clear_stop:
+        cleared = fuse.clear_stop()
+        if cleared:
+            print(
+                f"stop latch '{cleared}' cleared on request; committed so far "
+                f"${fuse.committed:f} of ${fuse.budget:f}"
+            )
+    elif fuse.state.stopped_reason:
+        print(
+            f"refusing to spend: earlier run stopped ({fuse.state.stopped_reason}); "
+            "add --clear-stop to continue against the same budget",
+            file=sys.stderr,
+        )
+        return 2
     writer = JsonlWriter(workspace.raw_dir, file_prefix="workload")
     fp_key = load_fingerprint_key()
     client = httpx.Client(timeout=httpx.Timeout(60.0))

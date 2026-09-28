@@ -82,3 +82,21 @@ def test_conservative_reserve_uses_dearest_input_rate_and_full_output() -> None:
         )
         is None
     )
+
+
+def test_clear_stop_lifts_the_latch_but_keeps_held_amounts_committed(tmp_path: Path) -> None:
+    path = tmp_path / "spend.json"
+    fuse = SpendFuse(path, budget_usd=Decimal("1"), max_calls=10)
+    fuse.reserve("c1", Decimal("0.4"))
+    fuse.settle("c1", None)  # unknown cost: reservation held, latch set
+    assert fuse.check(Decimal("0.1")) == (False, "unknown_cost")
+    with pytest.raises(SpendStop):
+        fuse.reserve("c2", Decimal("0.1"))
+    # a restart keeps the latch; only an explicit clear lifts it
+    again = SpendFuse(path, budget_usd=Decimal("1"), max_calls=10)
+    assert again.check(Decimal("0.1")) == (False, "unknown_cost")
+    assert again.clear_stop() == "unknown_cost"
+    assert again.committed == Decimal("0.4")  # the held amount still counts
+    assert again.check(Decimal("0.5")) == (True, "ok")
+    assert again.check(Decimal("0.7")) == (False, "budget_would_be_exceeded")
+    assert SpendFuse(path, budget_usd=Decimal("1"), max_calls=10).state.stopped_reason is None

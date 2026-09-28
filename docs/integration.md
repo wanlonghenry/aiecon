@@ -81,8 +81,9 @@ The key comes from `AIECON_FINGERPRINT_KEY` and is identified in the data only b
 ## 2. The live workload
 
 ```bash
-uv run python examples/run_workload.py --workspace .aiecon/live --dry-run
-uv run python examples/run_workload.py --workspace .aiecon/live --live --budget-usd 10 --max-calls 40 --yes-spend
+uv run --env-file .env python examples/run_workload.py --dry-run
+uv run --env-file .env python examples/run_workload.py --live --budget-usd 10 --yes-spend
+uv run --env-file .env python examples/run_workload.py --live --budget-usd 10 --yes-spend --providers anthropic
 ```
 
 Dry run prints the 18-call plan with a conservative reservation per call and sends
@@ -95,8 +96,12 @@ the reservation and stops when a cost cannot be computed, and persists its state
 ```bash
 uv run aiecon --workspace .aiecon/live ingest --input .aiecon/live/raw
 uv run aiecon --workspace .aiecon/live estimate --catalog catalogs/live-demo.json
-uv run --env-file .env aiecon --workspace .aiecon/live billing sync --provider openai     --scope-id live_openai_project --filter <openai project id> --dedicated-scope     --start 2026-09-27 --end 2026-09-29
-uv run --env-file .env aiecon --workspace .aiecon/live billing sync --provider anthropic     --scope-id live_anthropic_workspace --filter <anthropic workspace id> --dedicated-scope     --start 2026-09-27 --end 2026-09-29
+uv run --env-file .env aiecon --workspace .aiecon/live billing sync --provider openai \
+    --scope-id live_openai_project --filter <openai project id> --dedicated-scope \
+    --start 2026-09-27 --end 2026-09-29
+uv run --env-file .env aiecon --workspace .aiecon/live billing sync --provider anthropic \
+    --scope-id live_anthropic_workspace --filter <anthropic workspace id> --dedicated-scope \
+    --start 2026-09-27 --end 2026-09-29
 uv run aiecon --workspace .aiecon/live reconcile --start 2026-09-27 --end 2026-09-29
 uv run aiecon --workspace .aiecon/live report --out .aiecon/live/reports/report.html
 ```

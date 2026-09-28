@@ -228,3 +228,36 @@ def test_workload_dry_run_is_offline(tmp_path: Path) -> None:
         check=False,
     )
     assert refused.returncode == 2 and "refusing to spend" in refused.stderr
+    # a provider subset keeps only the runs that involve those providers
+    subset = subprocess.run(
+        [
+            sys.executable,
+            str(REPO / "examples" / "run_workload.py"),
+            "--workspace",
+            str(tmp_path / "live"),
+            "--dry-run",
+            "--providers",
+            "anthropic",
+        ],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert subset.returncode == 0, subset.stderr
+    assert "providers restricted to anthropic: 7 calls kept" in subset.stdout
+    assert "openai" not in "".join(
+        line for line in subset.stdout.splitlines() if line.startswith("  ")
+    )
+    bogus = subprocess.run(
+        [sys.executable, str(REPO / "examples" / "run_workload.py"), "--providers", "azure"],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert bogus.returncode == 2 and "--providers must be a subset" in bogus.stderr
