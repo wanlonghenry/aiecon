@@ -9,9 +9,10 @@ Honest boundaries of this release. Items marked *pending* are planned; items mar
   exercised for both providers through the LiteLLM 1.102.1 proxy on 2026-09-28 UTC (OpenAI
   gpt-5-nano: 8 priced calls incl. one stream, automatic prompt caching observed; Anthropic
   claude-haiku-4-5-20251001: 11 calls incl. two streams, explicit 5m cache writes and reads
-  observed, one call a known-cost lower bound). L1 — comparing real calls with real
-  provider cost reports over the same scope and window — is pending for both because no
-  admin keys were available. The README and the report say `live reconciliation pending`;
+  observed, one call a known-cost lower bound). Anthropic *usage* matched the Console token
+  export for that day exactly. L1 for money — comparing real calls with real provider cost
+  reports over the same scope and window — is pending for both because no cost export or
+  admin key was available. The README and the report say `live reconciliation pending`;
   do not read "matched" in the synthetic demo as a real-world accuracy claim.
 - Both `litellm_standard` usage fixtures are live captures (2026-09-28, LiteLLM 1.102.1);
   the Anthropic one has its nested 5m/1h breakdown filled in as all-5m because the collector

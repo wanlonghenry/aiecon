@@ -232,7 +232,20 @@ class LocalSide:
             and c.started_at_ms // DAY_MS != c.ended_at_ms // DAY_MS
         ]
 
+    @property
+    def writes_without_tier(self) -> int:
+        """Calls that wrote to the cache without a 5m/1h breakdown: their tier is unknown."""
+
+        return sum(
+            1
+            for c in self.calls
+            if (c.input_cache_write_tokens or 0) > 0 and not c.cache_write_breakdown
+        )
+
     def usage(self) -> dict[str, int]:
+        """Local totals per metric. Tier metrics are reported only when every local cache
+        write carries its tier, otherwise they are not comparable with the provider's."""
+
         totals: dict[str, int] = defaultdict(int)
         requests = 0
         for call in self.calls:
@@ -250,6 +263,9 @@ class LocalSide:
                 totals["input_cache_write_1h_tokens"] += call.cache_write_breakdown.get(
                     "ephemeral_1h", 0
                 )
+        if self.writes_without_tier:
+            for metric in TIER_METRICS:
+                totals.pop(metric, None)
         totals["requests"] = requests
         return dict(totals)
 
@@ -482,6 +498,8 @@ def reconcile(
                     reasons.append("local_exceeds_provider")
                 if side.unpriced_call_count:
                     reasons.append("unpriced_calls")
+                if side.writes_without_tier and any(m in provider_usage for m in TIER_METRICS):
+                    reasons.append("cache_write_tier_unknown")  # tier metrics not compared
                 if any(r.finality is Finality.provisional for r in model_usage_records):
                     reasons.append("late_data")
             buckets.append(

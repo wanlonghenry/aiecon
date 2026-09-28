@@ -1145,14 +1145,16 @@ separates what is built from what is verified and how.
 | 1. LiteLLM proxy install + collection smoke test | done (2026-09-27) | proxy 1.102.1 with `examples/litellm/config.yaml`; envelopes carry provider, model group, litellm version; streaming terminal gap found and fixed (G01) |
 | 2. Dry run of the workload script | done (2026-09-28 UTC) | 18-call plan, conservative reserve $0.321; `--providers` subset and `--clear-stop` added after the first live attempt |
 | 3. Paid workload (budget-capped) | done (2026-09-28 UTC) | run by the user from PowerShell (the agent may not spend). Final workspace `.aiecon/live`: 19 calls, 18 priced + 1 known-cost lower bound, known cost $0.050044. OpenAI 8 calls (gpt-5-nano, one stream; automatic caching: 27,264 of 27,331 prompt tokens cached on the repeat prefix calls). Anthropic 11 calls (claude-haiku-4-5-20251001, two streams; explicit 5m cache: 30,812 tokens written once, read twice). Three live findings fixed on the way: nested `cache_creation_token_details` layout (first prefix call stays tier-unknown), route name reported as model on Anthropic streams, `inference_geo: not_available` recorded as a region. Earlier attempts (account without credits, first run) archived under `.aiecon/live-run1-2026-09-28` |
-| 4. Provider reports | pending | `billing sync` needs admin keys (model keys cannot read usage/cost); fallback: console export via `billing import` |
+| 4. Provider reports | partial (2026-09-28 UTC) | Anthropic Console token-usage export (workspace `aiecon-live`, key `aiecon`) converted with `examples/anthropic_console_usage_to_aiecon.py` and imported as `snap_anthropic_usage_console_20260928`: usage comparison `matched` (uncached 189, cache write 61,624, cache read 61,624, output 675; tier metrics not compared because one local write has no tier). Monetary comparison still `no_provider_cost` for both providers: the OpenAI dashboard export supplied had no amount columns and ended before 2026-09-28, and no Anthropic cost export or admin keys yet |
 | 5. Reconcile + report on live data | done for the local side | `reconcile --start 2026-09-28 --end 2026-09-29`: `no_provider_cost` for both scopes (no snapshots); report at `.aiecon/live/reports/report.html` (context economics: OpenAI prefix group `already_cached`, Anthropic prefix group observed 5m writes/reads); validation lines stay "live reconciliation pending" until phase 4 |
 
 Captured live: both `litellm_standard` usage layouts (fixtures updated). Findings from the
 live data folded back into the code: estimated prefix tokens capped at the provider input
 total (context economics), `reasoning_effort=minimal` for gpt-5-nano in the workload,
 unique run ids per execution, `--providers` / `--clear-stop`, nested Anthropic cache
-breakdown, route-name model ids discarded, unknown `inference_geo` values ignored.
+breakdown, route-name model ids discarded (collector and replayable normalizer), unknown
+`inference_geo` values ignored, cache-write tier metrics compared only when every local
+write carries its tier.
 
 ### 19.4 Evidence
 

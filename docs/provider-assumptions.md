@@ -247,7 +247,7 @@ prompt text in the JSONL.
 | Provider | L0 fixtures (this repo) | L1 live reconciliation |
 | --- | --- | --- |
 | OpenAI | usage formats, cost/usage report shapes: T2.2 / T3.1; live collection + pricing 2026-09-28 (8 calls, scope `live_openai_project`) | `live reconciliation pending` (no admin key) |
-| Anthropic | usage formats, cost/usage report shapes: T2.2 / T3.1; live collection + pricing 2026-09-28 (4 calls, scope `live_anthropic_workspace`) | `live reconciliation pending` (no admin key) |
+| Anthropic | usage formats, cost/usage report shapes: T2.2 / T3.1; live collection + pricing 2026-09-28 (11 calls, scope `live_anthropic_workspace`) | usage: `matched` against the Console token export for scope `live_anthropic_workspace`, 2026-09-28 UTC (uncached 189, write 61,624, read 61,624, output 675); money: `live reconciliation pending` (no cost export or admin key) |
 
 Update this table only with the exact provider, scope and UTC window that was actually
 compared (PLAN.md section 1.1).

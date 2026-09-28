@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from aiecon.adapters.base import known_region
+from aiecon.adapters.base import PROVIDER_MAP, known_region, model_family
 from aiecon.adapters.litellm import LITELLM_ALLOWLIST
 from aiecon.collect.writer import JsonlWriter
 from aiecon.config import now_ms
@@ -73,21 +73,6 @@ except ImportError:  # pragma: no cover
 _ID_RE = re.compile(ID_PATTERN)
 _CODE_RE = re.compile(CODE_PATTERN)
 _HEX_RE = re.compile(r"^[0-9a-f]{16,128}$")
-
-PROVIDER_MAP: dict[str, Provider] = {
-    "openai": Provider.openai,
-    "anthropic": Provider.anthropic,
-}
-
-# Bare model ids that LiteLLM routes without a provider prefix. Only unambiguous families.
-MODEL_NAME_HINTS: tuple[tuple[str, Provider], ...] = (
-    ("gpt-", Provider.openai),
-    ("chatgpt-", Provider.openai),
-    ("o1", Provider.openai),
-    ("o3", Provider.openai),
-    ("o4", Provider.openai),
-    ("claude-", Provider.anthropic),
-)
 
 API_FAMILY_BY_PROVIDER: dict[Provider, ApiFamily] = {
     Provider.openai: ApiFamily.chat_completions,
@@ -142,13 +127,9 @@ def provider_from_model_name(model: str | None) -> Provider | None:
 
     if not isinstance(model, str) or not model:
         return None
-    if "/" in model:
-        prefix = model.split("/", 1)[0].lower()
-        return PROVIDER_MAP.get(prefix, Provider.other)
-    lowered = model.lower()
-    for hint, provider in MODEL_NAME_HINTS:
-        if lowered.startswith(hint):
-            return provider
+    family = model_family(model)
+    if family is not None:
+        return family
     try:  # LiteLLM knows far more families; use it when it is importable
         from litellm import get_llm_provider
 

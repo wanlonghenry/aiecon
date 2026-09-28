@@ -168,6 +168,21 @@ snapshots keep supplying the days it does not. `scope_dedicated: true` may be ad
 provider scope carries only the captured traffic. `record_kind` is `provider_usage`,
 `provider_cost` or `settled_cost`; nothing becomes "settled" by being imported.
 
+### Console exports
+
+The Anthropic Console *token usage* export (`claude_api_tokens_<from>_to_<to>.csv`) converts
+to a `provider_usage` snapshot with `examples/anthropic_console_usage_to_aiecon.py`:
+
+```bash
+uv run python examples/anthropic_console_usage_to_aiecon.py     --csv ~/Downloads/claude_api_tokens_2026_08_30_to_2026_09_28.csv     --scope-id live_anthropic_workspace --snapshot-id snap_anthropic_usage_console_20260928     --start 2026-08-30 --end 2026-09-29 --dedicated-scope     --out .aiecon/live/provider/imports/anthropic_usage_console_20260928
+uv run aiecon --workspace .aiecon/live billing import     --file .aiecon/live/provider/imports/anthropic_usage_console_20260928/records.json     --manifest .aiecon/live/provider/imports/anthropic_usage_console_20260928/manifest.json
+```
+
+Token counts are usage, not money: this yields a usage comparison only. For the monetary
+comparison import the Console *cost* export (amounts) or use `billing sync` with an admin
+key. The OpenAI dashboard cost export must include amount columns and cover the UTC days of
+the calls; an export without amounts (only `start_time`/`end_time`) cannot be used.
+
 ## 5. Reading the results
 
 - `report.json` is the machine-readable interface; `report.html` is rendered from it.

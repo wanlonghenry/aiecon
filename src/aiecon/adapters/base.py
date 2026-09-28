@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from aiecon.spec.call import UsageCompleteness
+from aiecon.spec.common import Provider
 
 
 @dataclass
@@ -25,6 +26,59 @@ class NormalizedUsage:
     def note(self, code: str) -> None:
         if code not in self.notes:
             self.notes.append(code)
+
+
+PROVIDER_MAP: dict[str, Provider] = {
+    "openai": Provider.openai,
+    "anthropic": Provider.anthropic,
+}
+
+# Bare model ids that gateways route without a provider prefix. Only unambiguous families.
+MODEL_NAME_HINTS: tuple[tuple[str, Provider], ...] = (
+    ("gpt-", Provider.openai),
+    ("chatgpt-", Provider.openai),
+    ("o1", Provider.openai),
+    ("o3", Provider.openai),
+    ("o4", Provider.openai),
+    ("claude-", Provider.anthropic),
+)
+
+
+def model_family(model: str | None) -> Provider | None:
+    """Provider implied by a model id without any network or gateway lookup.
+
+    An explicit ``prefix/`` maps through PROVIDER_MAP (unknown prefixes are ``other``);
+    otherwise the known bare families decide; anything else is ``None`` (unknown).
+    """
+
+    if not isinstance(model, str) or not model:
+        return None
+    if "/" in model:
+        return PROVIDER_MAP.get(model.split("/", 1)[0].lower(), Provider.other)
+    lowered = model.lower()
+    for hint, provider in MODEL_NAME_HINTS:
+        if lowered.startswith(hint):
+            return provider
+    return None
+
+
+def resolved_model_or_none(
+    provider: Provider, model_requested: str | None, model_resolved: str | None
+) -> str | None:
+    """Keep a provider-reported model id only when it can be one.
+
+    Seen live: LiteLLM reports its own model group (route name such as ``anthropic-live``)
+    as the model of a streamed Anthropic response. A resolved id whose family belongs to
+    another provider, or that has no known family while the requested id has one, is not
+    a provider model id and is recorded as unknown so ``model_requested`` is used.
+    """
+
+    if model_resolved is None:
+        return None
+    implied = model_family(model_resolved)
+    if implied is not None:
+        return model_resolved if implied is provider else None
+    return model_resolved if model_family(model_requested) is None else None
 
 
 KNOWN_INFERENCE_REGIONS = frozenset({"global", "us"})
