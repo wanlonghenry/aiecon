@@ -45,13 +45,28 @@
   .bar .track { height: 12px; background: var(--line); border-radius: 6px; overflow: hidden; }
   .bar .fill { height: 100%; background: var(--bar); }
   ul { padding-left: 20px; }
+  @media print {
+    @page { size: A4; margin: 12mm; }
+    :root { color-scheme: light; --fg: #1b1b1b; --bg: #ffffff; --muted: #5f6368; --line: #d9dde3;
+            --banner: #7a4b00; --banner-bg: #fff4d6; --accent: #2b5fb3; --bar: #7aa2e3; --ok: #2b7a3d; --warn: #a1541b; }
+    body { padding: 0; font-size: 11px; }
+    main { max-width: none; }
+    h2 { break-after: avoid; margin-top: 18px; }
+    .wrap { overflow: visible; }
+    table { font-size: 0.72rem; }
+    th, td { padding: 3px 5px; }
+    tr, .tile, details, .bar { break-inside: avoid; }
+    details::details-content { content-visibility: visible; }
+    summary { list-style: none; }
+    a { color: inherit; text-decoration: none; }
+  }
 </style>
 </head>
 <body>
 <main>
   <div class="banner">SYNTHETIC DEMO — every number on this page comes from generated fixtures, not from a real account.</div>
   <h1>aiecon cost report</h1>
-  <p class="lead">Dataset <code>demo-support-v1</code> · generated 2026-09-27 21:59:10 UTC · aiecon 0.1.1</p>
+  <p class="lead">Dataset <code>demo-support-v1</code> · generated 2026-09-28 06:12:47 UTC · aiecon 0.1.1</p>
 
   <h2>1. Data identity</h2>
   <div class="tiles">

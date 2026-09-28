@@ -197,6 +197,22 @@ ran there. An export whose rows carry no amount columns cannot be used.
 
 ## 5. Reading the results
 
+### PDF
+
+The HTML report carries a print stylesheet (A4, light colours, tables unclipped). Any
+Chromium browser prints it; collapsed evidence blocks stay collapsed unless they are opened
+first, so expand them in a copy and print that copy headlessly:
+
+```bash
+uv run python - <<'PY'
+from pathlib import Path
+src = Path(".aiecon/live/reports/report.html").read_text("utf-8")
+Path(".aiecon/live/reports/report-print.html").write_text(src.replace("<details>", "<details open>"), "utf-8")
+PY
+# Windows: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"; Linux/macOS: google-chrome / chromium
+msedge --headless=new --disable-gpu --no-pdf-header-footer     --print-to-pdf=.aiecon/live/reports/report.pdf .aiecon/live/reports/report-print.html
+```
+
 - `report.json` is the machine-readable interface; `report.html` is rendered from it.
 - `report-manifest.json` records versions, run ids, snapshot ids, input hashes and the
   hashes of the two report files.
