@@ -179,9 +179,21 @@ uv run aiecon --workspace .aiecon/live billing import     --file .aiecon/live/pr
 ```
 
 Token counts are usage, not money: this yields a usage comparison only. For the monetary
-comparison import the Console *cost* export (amounts) or use `billing sync` with an admin
-key. The OpenAI dashboard cost export must include amount columns and cover the UTC days of
-the calls; an export without amounts (only `start_time`/`end_time`) cannot be used.
+comparison import the Console *cost* export (amounts; it lags the usage export by up to a
+day) or use `billing sync` with an admin key.
+
+The OpenAI dashboard *cost* export (`cost_<from>_<to>.csv`, with `amount_value` columns)
+converts with `examples/openai_dashboard_cost_to_aiecon.py`:
+
+```bash
+uv run python examples/openai_dashboard_cost_to_aiecon.py     --csv ~/Downloads/cost_2026-09-25_2026-09-29.csv     --scope-id live_openai_project --snapshot-id snap_openai_cost_dashboard_20260928     --dedicated-scope --out .aiecon/live/provider/imports/openai_cost_dashboard_20260928
+uv run aiecon --workspace .aiecon/live billing import     --file .aiecon/live/provider/imports/openai_cost_dashboard_20260928/records.json     --manifest .aiecon/live/provider/imports/openai_cost_dashboard_20260928/manifest.json
+```
+
+Names and e-mail addresses in the export never become dimensions. Without a project
+grouping the export is organisation-wide: the local dataset must then hold every call the
+organisation made in the window, and `--dedicated-scope` is only true when nothing else
+ran there. An export whose rows carry no amount columns cannot be used.
 
 ## 5. Reading the results
 

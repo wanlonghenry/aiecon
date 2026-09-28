@@ -1145,8 +1145,8 @@ separates what is built from what is verified and how.
 | 1. LiteLLM proxy install + collection smoke test | done (2026-09-27) | proxy 1.102.1 with `examples/litellm/config.yaml`; envelopes carry provider, model group, litellm version; streaming terminal gap found and fixed (G01) |
 | 2. Dry run of the workload script | done (2026-09-28 UTC) | 18-call plan, conservative reserve $0.321; `--providers` subset and `--clear-stop` added after the first live attempt |
 | 3. Paid workload (budget-capped) | done (2026-09-28 UTC) | run by the user from PowerShell (the agent may not spend). Final workspace `.aiecon/live`: 19 calls, 18 priced + 1 known-cost lower bound, known cost $0.050044. OpenAI 8 calls (gpt-5-nano, one stream; automatic caching: 27,264 of 27,331 prompt tokens cached on the repeat prefix calls). Anthropic 11 calls (claude-haiku-4-5-20251001, two streams; explicit 5m cache: 30,812 tokens written once, read twice). Three live findings fixed on the way: nested `cache_creation_token_details` layout (first prefix call stays tier-unknown), route name reported as model on Anthropic streams, `inference_geo: not_available` recorded as a region. Earlier attempts (account without credits, first run) archived under `.aiecon/live-run1-2026-09-28` |
-| 4. Provider reports | partial (2026-09-28 UTC) | Anthropic Console token-usage export (workspace `aiecon-live`, key `aiecon`) converted with `examples/anthropic_console_usage_to_aiecon.py` and imported as `snap_anthropic_usage_console_20260928`: usage comparison `matched` (uncached 189, cache write 61,624, cache read 61,624, output 675; tier metrics not compared because one local write has no tier). Monetary comparison still `no_provider_cost` for both providers: the OpenAI dashboard export supplied had no amount columns and ended before 2026-09-28, and no Anthropic cost export or admin keys yet |
-| 5. Reconcile + report on live data | done for the local side | `reconcile --start 2026-09-28 --end 2026-09-29`: `no_provider_cost` for both scopes (no snapshots); report at `.aiecon/live/reports/report.html` (context economics: OpenAI prefix group `already_cached`, Anthropic prefix group observed 5m writes/reads); validation lines stay "live reconciliation pending" until phase 4 |
+| 4. Provider reports | partial (2026-09-28 UTC) | Anthropic Console token-usage export (workspace `aiecon-live`) converted with `examples/anthropic_console_usage_to_aiecon.py`, imported as `snap_anthropic_usage_console_20260928`: usage `matched` (uncached 189, cache write 61,624, cache read 61,624, output 675; tier metrics not compared because one local write has no tier). OpenAI dashboard cost export (organisation-wide, no project/line-item grouping) converted with `examples/openai_dashboard_cost_to_aiecon.py`, imported as `snap_openai_cost_dashboard_20260928`. Anthropic Console cost export for the same range came back with no rows (cost lags usage); re-export pending. No admin keys |
+| 5. Reconcile + report on live data | money matched for OpenAI (2026-09-28 UTC) | after merging the first run's raw events into `.aiecon/live` (the organisation-wide export necessarily includes them): 29 calls, 26 priced, 1 lower bound, 2 failed attempts with unknown cost. OpenAI cost comparison, scope `live_openai_project`, 2026-09-28 UTC: E $0.00383598 = B $0.00383598, `matched`, variance 0.0% (qualified: 1 call with unknown cost, provider data provisional). Anthropic: usage matched, money `no_provider_cost` until the cost export has rows. Report at `.aiecon/live/reports/report.html`. Known artefact: one outcome event of the first run conflicted with its re-run (same run id before the unique-id fix); the original (failed) outcome is kept, so one succeeded run is reported as failed |
 
 Captured live: both `litellm_standard` usage layouts (fixtures updated). Findings from the
 live data folded back into the code: estimated prefix tokens capped at the provider input
@@ -1165,7 +1165,11 @@ write carries its tier.
   real router before fixing (abandoned and consumed streams never received a terminal).
 - v0.1.1 correctness pass: commits a2b8f57 (G01), aa87db7 (G02-G09 code), 88ebcd7 (docs);
   CI run 36353701233 green on 88ebcd7 (lint/tests/demo/package, live-extra collector paths,
-  secret scan). No v0.1.1 tag or GitHub Release cut yet.
+  secret scan). Tag `v0.1.1` and GitHub Release published on 7da47a6.
+- Live run 2026-09-28 UTC (user-executed): raw events under `.aiecon/live/raw/2026-09-28/`
+  (local, never published); provider exports converted under
+  `.aiecon/live/provider/imports/`; first monetary L1 match: OpenAI, scope
+  `live_openai_project`, 2026-09-28 UTC, E = B = $0.00383598.
 
 ### 19.5 Open gaps
 
