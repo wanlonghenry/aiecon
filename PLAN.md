@@ -1143,13 +1143,15 @@ separates what is built from what is verified and how.
 | Phase | Status | Notes |
 | --- | --- | --- |
 | 1. LiteLLM proxy install + collection smoke test | done (2026-09-27) | proxy 1.102.1 with `examples/litellm/config.yaml`; envelopes carry provider, model group, litellm version; streaming terminal gap found and fixed (G01) |
-| 2. Dry run of the workload script | pending | `examples/run_workload.py --dry-run` against the local proxy, no spend |
-| 3. Paid workload (budget-capped) | pending | requires the explicit go-ahead; `--budget-usd 10 --max-calls 40 --yes-spend` |
+| 2. Dry run of the workload script | done (2026-09-28 UTC) | 18-call plan, conservative reserve $0.321; `--providers` subset and `--clear-stop` added after the first live attempt |
+| 3. Paid workload (budget-capped) | partial | run by the user from PowerShell (the agent may not spend). OpenAI: 8 of 9 calls priced ($0.002034), one earlier attempt refused for lack of credits and recorded as a failed attempt with unknown cost; automatic caching observed (27,264 of 27,331 prompt tokens cached on the 2nd/3rd prefix call); streaming terminal came from the log event as designed. Anthropic: first call refused ("credit balance is too low"), recorded as `invalid_request`; pending credits |
 | 4. Provider reports | pending | `billing sync` needs admin keys (model keys cannot read usage/cost); fallback: console export via `billing import` |
-| 5. Reconcile + report on live data | pending | validation status lines in the report switch from "live reconciliation pending" only after this |
+| 5. Reconcile + report on live data | done for the local side | `reconcile --start 2026-09-28 --end 2026-09-29`: `no_provider_cost` for both scopes (no snapshots); report rendered after fixing a template crash on absent usage metrics; validation lines stay "live reconciliation pending" |
 
-Real LiteLLM `litellm_standard` usage samples are still to be captured as fixtures during
-phase 3.
+Captured live: the OpenAI `litellm_standard` usage layout (fixture updated); the Anthropic
+sample is still documentation-derived. Findings from the live data folded back into the
+code: estimated prefix tokens capped at the provider input total (context economics),
+`reasoning_effort=minimal` for gpt-5-nano in the workload, unique run ids per execution.
 
 ### 19.4 Evidence
 
@@ -1164,8 +1166,9 @@ phase 3.
 
 ### 19.5 Open gaps
 
-- L1 live reconciliation for both providers (phases 2-5 above); OpenAI cost-report latency
+- L1 live reconciliation for both providers (phase 4 above needs admin keys or console
+  exports); Anthropic live collection needs account credits; OpenAI cost-report latency
   unverified from an official page.
-- Real LiteLLM usage payload fixtures (documentation-derived today).
+- Real LiteLLM usage payload fixture for Anthropic (documentation-derived today).
 - Streams abandoned by the client stay `in_flight` with unknown cost (documented).
 - Everything listed in `KNOWN_LIMITATIONS.md`.

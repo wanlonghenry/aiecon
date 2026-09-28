@@ -5,15 +5,19 @@ Honest boundaries of this release. Items marked *pending* are planned; items mar
 
 ## Validation
 
-- **No live reconciliation has been performed yet.** Both providers are at L0
-  (fixture-verified parsing, pricing, import, reconciliation, report). L1 — comparing real
-  calls with real provider cost reports over the same scope and window — is pending for
-  OpenAI and for Anthropic because no admin keys were available during the build. The
-  README and the report say `live reconciliation pending`; do not read "matched" in the
-  synthetic demo as a real-world accuracy claim.
-- The `litellm_standard` usage fixtures were written from LiteLLM 1.102.1 documentation,
-  not captured from a live run; the exact transformed layout should be captured on the
-  first live call.
+- **No live reconciliation has been performed yet.** Live collection and pricing have been
+  exercised for OpenAI (gpt-5-nano through the LiteLLM 1.102.1 proxy, 2026-09-28 UTC: 8
+  priced calls including one stream, automatic prompt caching observed) and only up to a
+  refused request for Anthropic (account without credits). L1 — comparing real calls with
+  real provider cost reports over the same scope and window — is pending for both because
+  no admin keys were available. The README and the report say `live reconciliation
+  pending`; do not read "matched" in the synthetic demo as a real-world accuracy claim.
+- The OpenAI `litellm_standard` usage fixture is a live capture (2026-09-28, gpt-5-nano
+  through LiteLLM 1.102.1); the Anthropic one is still written from LiteLLM documentation
+  and should be replaced by the first live Anthropic call.
+- OpenAI reports a dated model id (`gpt-5-nano-2025-08-07`) on non-streaming responses and
+  the bare alias on streamed ones; the cost breakdown therefore shows two rows for one
+  model. Both resolve to the same catalog prices.
 - OpenAI cost-report latency and finalization behaviour could not be verified from an
   official page (help-center pages were unreachable); snapshots are treated as provisional.
 

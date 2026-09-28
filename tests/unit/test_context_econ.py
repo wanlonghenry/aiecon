@@ -294,3 +294,20 @@ def test_prefix_below_minimum_cacheable_length_gets_no_scenario() -> None:
         dataset_id="d",
     ).groups[0]
     assert ok.modeled_savings_usd is not None
+
+
+def test_estimated_prefix_is_capped_at_the_provider_input_total() -> None:
+    """Seen live: chars/4 overestimated the prefix, hiding a fully cached prompt."""
+
+    index = index_with("1000", "1250", "100")
+    # provider says 10_050 input tokens per call; the application estimated a 14_000 prefix;
+    # the second and third calls read 10_000 tokens from cache each
+    calls = [
+        call(1, T0, prefix_tokens=14_000),
+        call(2, T0 + MINUTE, prefix_tokens=14_000, read=10_000),
+        call(3, T0 + 2 * MINUTE, prefix_tokens=14_000, read=10_000),
+    ]
+    group = analyze(calls, index, dataset_id="d").groups[0]
+    assert group.prefix_tokens == 10_050
+    assert any(c.startswith("prefix token count 14000 exceeds") for c in group.caveats)
+    assert group.recommendation is ContextRecommendation.already_cached

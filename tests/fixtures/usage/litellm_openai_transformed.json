@@ -1,20 +1,31 @@
 {
   "usage_format": "litellm_standard",
   "source": "S5 LiteLLM transformed Usage for an OpenAI chat response: OpenAI-shaped fields, no cache-creation counters",
-  "captured_from": "hand-written from LiteLLM 1.102.1 documentation; NOT yet captured from a live run (see docs/provider-assumptions.md)",
+  "captured_from": "live capture 2026-09-28 UTC: gpt-5-nano-2025-08-07 through the LiteLLM 1.102.1 proxy (examples/litellm/config.yaml), third call of the workload prefix-reuse group; automatic prompt caching via prompt_cache_key returned 27,264 cached tokens; the whole 120-token output budget was spent on reasoning",
   "usage": {
-    "prompt_tokens": 12000,
-    "completion_tokens": 500,
-    "total_tokens": 12500,
-    "prompt_tokens_details": {"cached_tokens": 8000, "audio_tokens": 0},
-    "completion_tokens_details": {"reasoning_tokens": 120, "audio_tokens": 0}
+    "completion_tokens": 120,
+    "prompt_tokens": 27331,
+    "total_tokens": 27451,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 120,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": null
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 27264,
+      "text_tokens": null,
+      "image_tokens": null
+    }
   },
   "expected": {
-    "input_total": 12000,
-    "input_uncached": 4000,
-    "input_cache_read": 8000,
+    "input_total": 27331,
+    "input_uncached": 67,
+    "input_cache_read": 27264,
     "input_cache_write": 0,
-    "output": 500,
+    "output": 120,
     "cache_write_breakdown": null,
     "completeness": "complete",
     "notes": ["cache_write_absent_treated_as_zero"]

@@ -98,10 +98,15 @@ def user_turn(text: str) -> dict[str, Any]:
     return {"role": "user", "content": text}
 
 
-def build_plan(prefix: str) -> list[Step]:
+def build_plan(prefix: str, exec_tag: str | None = None) -> list[Step]:
+    """One execution's plan. Run ids carry a per-execution tag so that repeating the script
+    never reuses a workflow run id (outcome event ids derive from run ids, and the same id
+    with different content is an ingest conflict, not a second run)."""
+
+    exec_tag = exec_tag or uuid.uuid4().hex[:6]
     steps: list[Step] = []
     for provider in ("openai", "anthropic"):
-        tag = provider[:3]
+        tag = f"{exec_tag}_{provider[:3]}"
 
         def step(_tag: str = tag, **kw: Any) -> Step:
             defaults = {
@@ -271,6 +276,10 @@ def request_body(step: Step, scope_ids: dict[str, str], fp_key: bytes | None) ->
         "metadata": {"aiecon": meta},
         **step.extra_body,
     }
+    if step.provider == "openai":
+        # seen live: gpt-5-nano spent the whole 120-token output budget on reasoning and
+        # returned no visible text; minimal effort keeps the answers (and the demo) readable
+        body["reasoning_effort"] = "minimal"
     if step.stream:
         body["stream_options"] = {"include_usage": True}
     return body

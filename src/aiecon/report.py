@@ -19,7 +19,7 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from importlib import resources
 from pathlib import Path
 
-from jinja2 import Environment, FunctionLoader, select_autoescape
+from jinja2 import Environment, FunctionLoader, Undefined, select_autoescape
 
 from aiecon import __version__
 from aiecon.context_econ import analyze
@@ -411,8 +411,14 @@ def build_report(
 
 
 # ------------------------------------------------------------------ rendering
+def _missing(value: object) -> bool:
+    """None, empty and Jinja's Undefined (a key absent from a dict) all render as unknown."""
+
+    return value is None or value == "" or isinstance(value, Undefined)
+
+
 def _usd(value: object, places: int = 6) -> str:
-    if value is None or value == "":
+    if _missing(value):
         return "Unknown"
     dec = Decimal(str(value))
     text = f"{dec:.{places}f}"
@@ -420,25 +426,25 @@ def _usd(value: object, places: int = 6) -> str:
 
 
 def _pct(value: object) -> str:
-    if value is None or value == "":
+    if _missing(value):
         return "Not comparable"
     return f"{Decimal(str(value)):+.2f}%"
 
 
 def _num(value: object) -> str:
-    if value is None or value == "":
+    if _missing(value):
         return "Not available"
     return f"{int(value):,}"
 
 
 def _day(ts_ms: object) -> str:
-    if ts_ms is None:
+    if _missing(ts_ms):
         return "Unknown"
     return day_label(int(ts_ms))
 
 
 def _ts(ts_ms: object) -> str:
-    if ts_ms is None:
+    if _missing(ts_ms):
         return "Unknown"
     from datetime import UTC, datetime
 

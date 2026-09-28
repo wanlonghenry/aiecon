@@ -274,6 +274,21 @@ def analyze(calls: list[ModelCall], index: CatalogIndex, *, dataset_id: str) -> 
         if not usable:
             result_groups.append(insufficient("no call in the group has complete usage"))
             continue
+        # a prefix cannot be longer than the whole prompt: an estimated count above the
+        # smallest provider-reported input total is capped there (seen live: chars/4
+        # overestimated a 27k-token prefix as 38k, which would have hidden a fully cached
+        # prefix behind a modeled scenario)
+        smallest_input = min(
+            (c.input_total_tokens for c in usable if c.input_total_tokens is not None),
+            default=None,
+        )
+        if smallest_input is not None and prefix_tokens > smallest_input:
+            caveats.append(
+                f"prefix token count {prefix_tokens} exceeds the smallest provider-reported "
+                f"input total {smallest_input}; capped at the input total"
+            )
+            prefix_tokens = smallest_input
+            common["prefix_tokens"] = prefix_tokens
         if model_id is None or contract is None:
             result_groups.append(
                 insufficient("model has no verified cache contract in the catalog")

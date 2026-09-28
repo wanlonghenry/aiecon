@@ -146,11 +146,11 @@
     {% for b in report.usage_coverage.buckets %}
     {% set lu = b.local_usage or {} %}{% set pu = b.provider_usage or {} %}{% set uv = b.usage_variance or {} %}
     <tr><td>{{ b.provider }}</td><td class="id">{{ b.scope_id }}</td><td>{{ b.dimensions.day }}</td><td><code>{{ b.dimensions.model }}</code></td>
-        <td class="num">{{ lu.input_total_tokens | num }}</td><td class="num">{{ pu.input_total_tokens | num }}</td>
-        <td class="num">{{ lu.output_tokens | num }}</td><td class="num">{{ pu.output_tokens | num }}</td>
-        <td class="num">{{ uv.input_uncached_tokens if uv.input_uncached_tokens is not none else "—" }}</td>
-        <td class="num">{{ uv.input_cache_read_tokens if uv.input_cache_read_tokens is not none else "—" }}</td>
-        <td class="num">{{ uv.input_cache_write_tokens if uv.input_cache_write_tokens is not none else "—" }}</td>
+        <td class="num">{{ lu.get("input_total_tokens") | num }}</td><td class="num">{{ pu.get("input_total_tokens") | num }}</td>
+        <td class="num">{{ lu.get("output_tokens") | num }}</td><td class="num">{{ pu.get("output_tokens") | num }}</td>
+        <td class="num">{{ uv.get("input_uncached_tokens") if uv.get("input_uncached_tokens") is not none else "—" }}</td>
+        <td class="num">{{ uv.get("input_cache_read_tokens") if uv.get("input_cache_read_tokens") is not none else "—" }}</td>
+        <td class="num">{{ uv.get("input_cache_write_tokens") if uv.get("input_cache_write_tokens") is not none else "—" }}</td>
         <td><span class="status {{ b.status }}">{{ b.status }}</span> <span class="id">{{ b.reasons | join(", ") }}</span></td></tr>
     {% endfor %}
     </tbody>
