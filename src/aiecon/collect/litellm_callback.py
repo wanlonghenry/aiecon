@@ -425,14 +425,42 @@ class EnvelopeCollector:
         upstream_cost = None
         provider_request_id = None
         provider_created_at_ms = None
+        service_tier = None
+        inference_region = None
         if response is not None:
             usage_obj = _get(response, "usage")
             if usage_obj is not None:
                 safe_usage, drift_map = build_safe_usage(usage_obj, LITELLM_ALLOWLIST)
                 drift = drift_map or None
+                # the envelope allows two levels of usage nesting; LiteLLM 1.102.1 puts the
+                # Anthropic 5m/1h breakdown three levels deep, so hoist it to the top-level
+                # key the adapter has always read
+                details = _mapping(safe_usage.get("prompt_tokens_details"))
+                nested = details.get("cache_creation_token_details")
+                if isinstance(nested, Mapping):
+                    safe_usage["prompt_tokens_details"] = {
+                        k: v for k, v in details.items() if k != "cache_creation_token_details"
+                    }
+                    safe_usage.setdefault("cache_creation_token_details", dict(nested))
                 if not safe_usage:
                     safe_usage = None
+                # LiteLLM adds these two short codes to the usage object on some paths
+                # (seen live for Anthropic); they select prices, so keep them as codes
+                service_tier = _safe_code(_get(usage_obj, "service_tier"))
+                inference_region = _safe_code(_get(usage_obj, "inference_geo"))
+                if drift:
+                    for key, value in (
+                        ("service_tier", service_tier),
+                        ("inference_geo", inference_region),
+                    ):
+                        if value is not None:
+                            drift.pop(key, None)  # captured above, so not unknown
+                    drift = drift or None
             model_resolved = _safe_id(_get(response, "model"))
+            # streamed Anthropic responses carry the LiteLLM model group (route name) here
+            # instead of a provider model id (seen live); a route name is never a model
+            if model_resolved is not None and model_resolved == self._model_group(request_data):
+                model_resolved = None
             provider_request_id = _safe_id(_get(response, "id"))
             created = _safe_int(_get(response, "created"))
             if created is not None and 1_000_000_000 < created < 4_102_444_800:
@@ -456,6 +484,8 @@ class EnvelopeCollector:
             status=status,
             error_class=error_class,
             provider_request_id=provider_request_id,
+            service_tier=service_tier,
+            inference_region=inference_region,
             started_at_ms=started,
             provider_created_at_ms=provider_created_at_ms,
             usage_format=UsageFormat.litellm_standard if safe_usage else UsageFormat.unknown,

@@ -28,6 +28,13 @@ LITELLM_ALLOWLIST: Mapping[str, Any] = {
         "text_tokens": True,
         "image_tokens": True,
         "cache_creation_tokens": True,
+        "cache_write_tokens": True,
+        # LiteLLM 1.102.1 nests the Anthropic 5m/1h breakdown here (seen live 2026-09-28);
+        # the top-level key below is kept for older/other layouts
+        "cache_creation_token_details": {
+            "ephemeral_5m_input_tokens": True,
+            "ephemeral_1h_input_tokens": True,
+        },
     },
     "completion_tokens_details": {
         "reasoning_tokens": True,
@@ -73,15 +80,22 @@ def normalize_litellm(usage: Mapping[str, Any] | None) -> NormalizedUsage:
         write = get_int(usage, "cache_creation_input_tokens")
     if write is None and has_key(usage, "prompt_tokens_details", "cache_creation_tokens"):
         write = get_int(usage, "prompt_tokens_details", "cache_creation_tokens")
+    if write is None and has_key(usage, "prompt_tokens_details", "cache_write_tokens"):
+        write = get_int(usage, "prompt_tokens_details", "cache_write_tokens")
     if write is None:
         write = 0
         result.note("cache_write_absent_treated_as_zero")
     result.input_cache_write = write
 
+    details_path: tuple[str, ...] | None = None
     if has_key(usage, "cache_creation_token_details"):
+        details_path = ("cache_creation_token_details",)
+    elif has_key(usage, "prompt_tokens_details", "cache_creation_token_details"):
+        details_path = ("prompt_tokens_details", "cache_creation_token_details")
+    if details_path is not None:
         breakdown: dict[str, int] = {}
         for source_key, tier in WRITE_TIERS:
-            value = get_int(usage, "cache_creation_token_details", source_key)
+            value = get_int(usage, *details_path, source_key)
             if value is not None:
                 breakdown[tier] = value
         if breakdown:

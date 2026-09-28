@@ -209,3 +209,41 @@ def test_started_kwargs_do_not_mutate_shared_metadata(tmp_path: Path) -> None:
         first["litellm_params"]["metadata"]["aiecon_call_id"]
         != second["litellm_params"]["metadata"]["aiecon_call_id"]
     )
+
+
+def test_route_name_is_never_the_resolved_model_and_usage_codes_are_kept(tmp_path: Path) -> None:
+    """Seen live: a streamed Anthropic response reports the LiteLLM model group as its model."""
+
+    collector, raw = make_collector(tmp_path)
+    attempt = collector.begin_attempt(
+        request("claude-fixture", model_group="anthropic-live"), "completion"
+    )
+    resp = response("anthropic-live")
+    resp.usage = {
+        **resp.usage,
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "cache_creation_input_tokens": 100,
+        "prompt_tokens_details": {
+            "cached_tokens": 600,
+            "cache_creation_tokens": 100,
+            "cache_creation_token_details": {
+                "ephemeral_5m_input_tokens": 100,
+                "ephemeral_1h_input_tokens": 0,
+            },
+        },
+    }
+    collector.finish_success(attempt, resp, "completion")
+    storage, stats = ingest(tmp_path, raw)
+    try:
+        assert stats.accepted == 2
+        call = storage.list_calls("live-test")[0]
+        assert call.model_resolved is None and call.model_requested == "claude-fixture"
+        assert call.service_tier == "standard" and call.inference_region == "global"
+        assert call.input_cache_write_tokens == 100
+        assert call.cache_write_breakdown == {"ephemeral_5m": 100, "ephemeral_1h": 0}
+        assert call.usage_completeness.value == "complete"
+        # the codes are not counted as drift; the unknown fields still are
+        assert call.schema_drift == {"surprising_field": 1, "nested_text": 1}
+    finally:
+        storage.close()

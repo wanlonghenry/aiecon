@@ -127,6 +127,36 @@ def test_litellm_transformed_anthropic_usage_is_not_double_counted() -> None:
     assert result.completeness is UsageCompleteness.complete
 
 
+def test_litellm_nested_cache_breakdown_is_read_from_prompt_tokens_details() -> None:
+    # LiteLLM 1.102.1 live layout: the 5m/1h split sits under prompt_tokens_details
+    usage = {
+        "prompt_tokens": 30829,
+        "completion_tokens": 120,
+        "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_creation_tokens": 30812,
+            "cache_creation_token_details": {
+                "ephemeral_5m_input_tokens": 30812,
+                "ephemeral_1h_input_tokens": 0,
+            },
+        },
+        "cache_creation_input_tokens": 30812,
+        "cache_read_input_tokens": 0,
+    }
+    result = normalize_usage(UsageFormat.litellm_standard, usage)
+    assert (result.input_uncached, result.input_cache_read, result.input_cache_write) == (
+        17,
+        0,
+        30812,
+    )
+    assert result.cache_write_breakdown == {"ephemeral_5m": 30812, "ephemeral_1h": 0}
+    assert result.completeness is UsageCompleteness.complete
+    # without any breakdown the write stays unpriceable, as before
+    del usage["prompt_tokens_details"]["cache_creation_token_details"]
+    bare = normalize_usage(UsageFormat.litellm_standard, usage)
+    assert "cache_write_tier_unknown" in bare.notes
+
+
 def test_missing_usage_is_missing_not_zero() -> None:
     result = normalize_usage(UsageFormat.anthropic_messages, None)
     assert result.completeness is UsageCompleteness.missing

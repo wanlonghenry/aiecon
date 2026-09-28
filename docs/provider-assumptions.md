@@ -90,11 +90,27 @@ never summed across deltas (V04).
 ### `litellm_standard` (S5)
 
 LiteLLM's transformed `Usage` object is OpenAI-shaped. For Anthropic responses it already
-folds cache tokens into `prompt_tokens` and exposes `cache_creation_input_tokens`,
-`cache_read_input_tokens` and `cache_creation_token_details` next to it. The adapter treats
-`prompt_tokens` as the total and subtracts the cache classes; applying the native Anthropic
-sum again would double count. Every field outside the allowlist is counted as
-`schema_drift` by name only.
+folds cache tokens into `prompt_tokens` and exposes `cache_creation_input_tokens` and
+`cache_read_input_tokens` next to it; the 5m/1h breakdown sits under
+`prompt_tokens_details.cache_creation_token_details` (observed live with 1.102.1 on
+2026-09-28; the top-level `cache_creation_token_details` documented earlier is still
+accepted). The adapter treats `prompt_tokens` as the total and subtracts the cache classes;
+applying the native Anthropic sum again would double count. Every field outside the
+allowlist is counted as `schema_drift` by name only.
+
+Observed live (2026-09-28, gpt-5-nano and claude-haiku-4-5-20251001 through the proxy):
+
+- OpenAI non-streaming responses report the dated model id (`gpt-5-nano-2025-08-07`),
+  streamed ones the bare alias; Anthropic streamed responses report the LiteLLM model
+  group name (`anthropic-live`) instead of a model id, which the collector now discards so
+  `model_requested` is used.
+- `prompt_tokens_details.cached_tokens` is populated for OpenAI automatic caching
+  (`prompt_cache_key`), as expected: 27,264 of 27,331 prompt tokens on the repeat calls.
+- LiteLLM adds `cost`, `service_tier` and `inference_geo` to the usage object on some
+  paths; the last two are captured as `service_tier` / `inference_region` when they are
+  short lowercase codes, and `cost` is kept as `upstream_cost_estimate_usd` only.
+- gpt-5-nano spent the whole 120-token output budget on `reasoning_tokens` when no
+  `reasoning_effort` was given; the workload now sends `minimal`.
 
 Contract for absent cache counters in this format: LiteLLM only populates
 `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens` and the cache-creation
@@ -227,8 +243,8 @@ prompt text in the JSONL.
 
 | Provider | L0 fixtures (this repo) | L1 live reconciliation |
 | --- | --- | --- |
-| OpenAI | usage formats, cost/usage report shapes: T2.2 / T3.1 | `live reconciliation pending` (no admin key at build time) |
-| Anthropic | usage formats, cost/usage report shapes: T2.2 / T3.1 | `live reconciliation pending` (no admin key at build time) |
+| OpenAI | usage formats, cost/usage report shapes: T2.2 / T3.1; live collection + pricing 2026-09-28 (8 calls, scope `live_openai_project`) | `live reconciliation pending` (no admin key) |
+| Anthropic | usage formats, cost/usage report shapes: T2.2 / T3.1; live collection + pricing 2026-09-28 (4 calls, scope `live_anthropic_workspace`) | `live reconciliation pending` (no admin key) |
 
 Update this table only with the exact provider, scope and UTC window that was actually
 compared (PLAN.md section 1.1).
@@ -239,5 +255,6 @@ compared (PLAN.md section 1.1).
 - OpenAI "short context" vs "long context" threshold for GPT-6 models (labels say `<272K` for
   gpt-5.5/5.4 only); the live catalog therefore omits gpt-6 models.
 - USD as the OpenAI pricing page currency is implied by `$` figures, not stated in a sentence.
-- The exact LiteLLM-transformed `usage` layout for successful calls (fixtures are written
-  from documentation; the first live run should capture real samples).
+- The values of the nested Anthropic cache-creation breakdown were not retained on the
+  first live call (the allowlist of that build dropped them); the fixture fills them in as
+  all-5m, which the request asked for. The next Anthropic run records them verbatim.

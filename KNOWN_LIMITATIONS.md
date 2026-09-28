@@ -12,9 +12,9 @@ Honest boundaries of this release. Items marked *pending* are planned; items mar
   real provider cost reports over the same scope and window — is pending for both because
   no admin keys were available. The README and the report say `live reconciliation
   pending`; do not read "matched" in the synthetic demo as a real-world accuracy claim.
-- The OpenAI `litellm_standard` usage fixture is a live capture (2026-09-28, gpt-5-nano
-  through LiteLLM 1.102.1); the Anthropic one is still written from LiteLLM documentation
-  and should be replaced by the first live Anthropic call.
+- Both `litellm_standard` usage fixtures are live captures (2026-09-28, LiteLLM 1.102.1);
+  the Anthropic one has its nested 5m/1h breakdown filled in as all-5m because the collector
+  of that build dropped the nested values (recorded as schema drift, fixed since).
 - OpenAI reports a dated model id (`gpt-5-nano-2025-08-07`) on non-streaming responses and
   the bare alias on streamed ones; the cost breakdown therefore shows two rows for one
   model. Both resolve to the same catalog prices.
