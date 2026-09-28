@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_EVEN, Decimal
@@ -340,6 +341,105 @@ class _GapItem:
     record_ids: list[str]
 
 
+@dataclass
+class _TierItem:
+    """Local cache writes logged without a 5m/1h tier and what the provider says about them."""
+
+    model: str
+    tier: str | None
+    tokens: int
+    price: Decimal | None
+    record_ids: list[str]
+    call_ids: list[str]
+
+
+TIER_RESOURCE = {
+    "ephemeral_5m": Resource.input_cache_write_5m,
+    "ephemeral_1h": Resource.input_cache_write_1h,
+}
+
+
+def resolve_unknown_write_tier(
+    calls: list[ModelCall], provider_usage: Mapping[str, int]
+) -> tuple[str | None, int, list[str]]:
+    """Which tier the local writes without a breakdown must have used.
+
+    The provider's per-tier totals minus the local writes whose tier is known leave a
+    remainder; when that remainder equals the tier-unknown local writes in exactly one tier
+    (and nothing in the other), the tier is determined by evidence. Returns
+    ``(tier | None, unknown_tokens, call_ids)``.
+    """
+
+    unknown = [
+        c for c in calls if (c.input_cache_write_tokens or 0) > 0 and not c.cache_write_breakdown
+    ]
+    unknown_tokens = sum(c.input_cache_write_tokens or 0 for c in unknown)
+    call_ids = [c.call_id for c in unknown]
+    if not unknown or any(m not in provider_usage for m in TIER_METRICS):
+        return None, unknown_tokens, call_ids
+    known_5m = sum((c.cache_write_breakdown or {}).get("ephemeral_5m", 0) for c in calls)
+    known_1h = sum((c.cache_write_breakdown or {}).get("ephemeral_1h", 0) for c in calls)
+    delta_5m = provider_usage["input_cache_write_5m_tokens"] - known_5m
+    delta_1h = provider_usage["input_cache_write_1h_tokens"] - known_1h
+    if delta_5m == unknown_tokens and delta_1h == 0:
+        return "ephemeral_5m", unknown_tokens, call_ids
+    if delta_1h == unknown_tokens and delta_5m == 0:
+        return "ephemeral_1h", unknown_tokens, call_ids
+    return None, unknown_tokens, call_ids
+
+
+def _tier_adjustments(
+    items: list[_TierItem],
+) -> tuple[list[Adjustment], list[Adjustment], list[str]]:
+    """Evidence-backed ``cache_tier`` explanations (or hypotheses) for tier-unknown writes.
+
+    The estimate stays a known-cost lower bound; only the reconciliation explains the gap.
+    """
+
+    explained: list[Adjustment] = []
+    hypotheses: list[Adjustment] = []
+    reasons: list[str] = []
+    for item in items:
+        if item.tokens <= 0:
+            continue
+        refs = [*item.record_ids, *item.call_ids]
+        if item.tier and item.price is not None:
+            label = item.tier.replace("ephemeral_", "")
+            explained.append(
+                Adjustment(
+                    code="cache_tier",
+                    signed_amount_usd=_q(-(Decimal(item.tokens) * item.price)),
+                    evidence_backed=True,
+                    evidence_refs=refs,
+                    description=(
+                        f"{item.tokens} cache-write tokens of {item.model} were logged without "
+                        f"a tier and left out of the estimate; the provider usage report leaves "
+                        f"exactly that many {label} writes unaccounted for, so they are priced "
+                        f"at the {label} rate."
+                    ),
+                )
+            )
+            reasons.append("cache_tier")
+        elif item.price is not None:
+            hypotheses.append(
+                Adjustment(
+                    code="cache_tier",
+                    signed_amount_usd=_q(-(Decimal(item.tokens) * item.price)),
+                    evidence_backed=False,
+                    evidence_refs=refs,
+                    description=(
+                        f"{item.tokens} cache-write tokens of {item.model} have no tier and the "
+                        "provider totals do not single one out; shown at the 5m rate, the 1h "
+                        "rate would be higher."
+                    ),
+                )
+            )
+            reasons.append("cache_write_tier_unknown")
+        else:
+            reasons.append("cache_write_tier_unknown")
+    return explained, hypotheses, reasons
+
+
 def reconcile(
     storage: Storage,
     dataset_id: str,
@@ -423,6 +523,7 @@ def reconcile(
         else:
             model_keys = [None]
         gap_items: list[_GapItem] = []
+        tier_items: list[_TierItem] = []
         gap_unpriceable = False
         for model in model_keys:
             side = LocalSide()
@@ -496,6 +597,28 @@ def reconcile(
                         )
                 if any(v > 0 for v in usage_variance.values()):
                     reasons.append("local_exceeds_provider")
+                if side.writes_without_tier:
+                    tier, unknown_tokens, call_ids = resolve_unknown_write_tier(
+                        side.calls, provider_usage
+                    )
+                    resource = TIER_RESOURCE.get(tier or "")
+                    price = (
+                        side.unit_price_for((resource,))
+                        if resource is not None
+                        else side.unit_price_for((Resource.input_cache_write_5m,))
+                    )
+                    tier_items.append(
+                        _TierItem(
+                            model=model or NOT_GROUPED,
+                            tier=tier,
+                            tokens=unknown_tokens,
+                            price=price,
+                            record_ids=[r.record_id for r in model_usage_records],
+                            call_ids=call_ids,
+                        )
+                    )
+                    if tier:
+                        reasons.append("cache_tier_resolved")
                 if side.unpriced_call_count:
                     reasons.append("unpriced_calls")
                 if side.writes_without_tier and any(m in provider_usage for m in TIER_METRICS):
@@ -634,6 +757,10 @@ def reconcile(
                         reasons.append("capture_gap" if dedicated else "other_traffic_possible")
                 elif gap_unpriceable:
                     reasons.append("capture_gap_unpriced")
+            tier_explained, tier_hypotheses, tier_reasons = _tier_adjustments(tier_items)
+            explained.extend(tier_explained)
+            hypotheses.extend(tier_hypotheses)
+            reasons.extend(r for r in tier_reasons if r not in reasons)
             if any(r.finality is Finality.provisional for r in cost_records):
                 reasons.append("late_data")
             explained_total = sum((a.signed_amount_usd for a in explained), start=Decimal(0))

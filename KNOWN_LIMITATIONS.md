@@ -32,8 +32,11 @@ Honest boundaries of this release. Items marked *pending* are planned; items mar
 - Calls that straddle UTC midnight are priced by their start day and flagged
   `boundary_call`; the provider may report them on the end day. This is shown as a
   hypothesis, not as evidence.
-- Anthropic cache writes without a 5m/1h breakdown remain unpriced; OpenAI cache writes
-  without a counter make a write-billed model's estimate a lower bound.
+- Anthropic cache writes without a 5m/1h breakdown remain unpriced (the estimate is a
+  lower bound). When a provider usage report for the same model and UTC day leaves exactly
+  those tokens unaccounted for in one tier, reconciliation adds an evidence-backed
+  `cache_tier` adjustment for them; the estimate itself is never changed. OpenAI cache
+  writes without a counter make a write-billed model's estimate a lower bound.
 - Calls with missing or invalid usage (timeouts, interrupted streams, failed primaries)
   have unknown cost. Totals that include them are labeled known-cost lower bounds, and a
   reconciliation day that contains them is never `matched` by tolerance.

@@ -15,8 +15,23 @@ from aiecon.ingest import ingest_paths
 from aiecon.pipeline import PROVIDER_FIXTURES, fixture_root, load_expected_metrics
 from aiecon.pricing import load_synthetic_catalog
 from aiecon.pricing.run import run_pricing
-from aiecon.reconcile import reconcile, shareable_line
-from aiecon.spec import ComparisonKind, DataKind, ReconciliationStatus, TimeWindow
+from aiecon.reconcile import (
+    _tier_adjustments,
+    _TierItem,
+    reconcile,
+    resolve_unknown_write_tier,
+    shareable_line,
+)
+from aiecon.spec import (
+    CallStatus,
+    ComparisonKind,
+    DataKind,
+    ModelCall,
+    Provider,
+    ReconciliationStatus,
+    TimeWindow,
+    UsageCompleteness,
+)
 from aiecon.storage import Storage, Workspace, WorkspaceError
 
 D1 = 1_790_380_800_000
@@ -434,3 +449,62 @@ def test_surplus_in_non_dedicated_scope_is_a_hypothesis(
     # the cost snapshot still declares a dedicated scope, but the usage evidence does not:
     # the day counts as dedicated only when every snapshot that feeds it says so
     assert day1.status is ReconciliationStatus.variance
+
+
+# ------------------------------------------------------ cache-tier resolution (live)
+def _call_with_write(call_id: str, write: int, breakdown: dict | None) -> ModelCall:
+    return ModelCall(
+        dataset_id="d",
+        call_id=call_id,
+        data_kind=DataKind.live,
+        scope_id="s",
+        normalizer_version="0.1.0",
+        provider=Provider.anthropic,
+        model_requested="claude-haiku-4-5-20251001",
+        status=CallStatus.success,
+        started_at_ms=D1,
+        ended_at_ms=D1 + 1000,
+        input_total_tokens=write + 17,
+        input_uncached_tokens=17,
+        input_cache_read_tokens=0,
+        input_cache_write_tokens=write,
+        output_tokens=5,
+        cache_write_breakdown=breakdown,
+        usage_completeness=UsageCompleteness.complete,
+    )
+
+
+def test_unknown_write_tier_is_resolved_from_provider_tier_totals() -> None:
+    """Seen live: one write logged without a tier; the Console usage export shows 1h = 0."""
+
+    known = _call_with_write("c_known", 30812, {"ephemeral_5m": 30812, "ephemeral_1h": 0})
+    unknown = _call_with_write("c_unknown", 30812, None)
+    provider = {"input_cache_write_5m_tokens": 61624, "input_cache_write_1h_tokens": 0}
+    assert resolve_unknown_write_tier([known, unknown], provider) == (
+        "ephemeral_5m",
+        30812,
+        ["c_unknown"],
+    )
+    provider_1h = {"input_cache_write_5m_tokens": 30812, "input_cache_write_1h_tokens": 30812}
+    assert resolve_unknown_write_tier([known, unknown], provider_1h)[0] == "ephemeral_1h"
+    # ambiguous or contradicting totals resolve nothing
+    mixed = {"input_cache_write_5m_tokens": 46218, "input_cache_write_1h_tokens": 15406}
+    assert resolve_unknown_write_tier([known, unknown], mixed)[0] is None
+    assert resolve_unknown_write_tier([known, unknown], {})[0] is None
+    assert resolve_unknown_write_tier([known], provider) == (None, 0, [])
+
+
+def test_tier_adjustments_are_evidence_only_when_resolved() -> None:
+    price = Decimal("0.00000125")
+    resolved = _TierItem("claude-haiku-4-5-20251001", "ephemeral_5m", 30812, price, ["r1"], ["c1"])
+    explained, hypotheses, reasons = _tier_adjustments([resolved])
+    assert [a.code for a in explained] == ["cache_tier"] and hypotheses == []
+    assert explained[0].evidence_backed is True and explained[0].evidence_refs == ["r1", "c1"]
+    assert explained[0].signed_amount_usd == -Decimal("0.038515")
+    assert reasons == ["cache_tier"]
+    unresolved = _TierItem("claude-haiku-4-5-20251001", None, 30812, price, ["r1"], ["c1"])
+    explained, hypotheses, reasons = _tier_adjustments([unresolved])
+    assert explained == [] and hypotheses[0].evidence_backed is False
+    assert reasons == ["cache_write_tier_unknown"]
+    unpriced = _TierItem("m", None, 10, None, [], ["c1"])
+    assert _tier_adjustments([unpriced]) == ([], [], ["cache_write_tier_unknown"])
