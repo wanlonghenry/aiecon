@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from aiecon.adapters import anthropic, litellm, openai
-from aiecon.adapters.base import NormalizedUsage, finish
+from aiecon.adapters.base import NormalizedUsage, finish, known_region
 from aiecon.spec.call import ModelCall, UsageCompleteness
 from aiecon.spec.common import NORMALIZER_VERSION
 from aiecon.spec.envelope import (
@@ -81,7 +81,7 @@ def normalize(envelope: RawEnvelope) -> ModelCall:
             model_requested=payload.model_requested,
             model_resolved=payload.model_resolved,
             service_tier=payload.service_tier,
-            inference_region=payload.inference_region,
+            inference_region=known_region(payload.inference_region),
             stream=payload.stream,
             started_at_ms=envelope.occurred_at_ms,
             status=CallStatus.in_flight,
@@ -101,7 +101,7 @@ def normalize(envelope: RawEnvelope) -> ModelCall:
         model_requested=payload.model_requested,
         model_resolved=payload.model_resolved,
         service_tier=payload.service_tier,
-        inference_region=payload.inference_region,
+        inference_region=known_region(payload.inference_region),
         provider_request_id=payload.provider_request_id,
         stream=payload.stream,
         started_at_ms=payload.started_at_ms,

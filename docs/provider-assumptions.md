@@ -107,8 +107,11 @@ Observed live (2026-09-28, gpt-5-nano and claude-haiku-4-5-20251001 through the 
 - `prompt_tokens_details.cached_tokens` is populated for OpenAI automatic caching
   (`prompt_cache_key`), as expected: 27,264 of 27,331 prompt tokens on the repeat calls.
 - LiteLLM adds `cost`, `service_tier` and `inference_geo` to the usage object on some
-  paths; the last two are captured as `service_tier` / `inference_region` when they are
-  short lowercase codes, and `cost` is kept as `upstream_cost_estimate_usd` only.
+  paths. `service_tier` is captured as a code (`standard` observed); `inference_geo` is
+  kept only when it is a known region code (`global`, `us`): Anthropic answers
+  `not_available` for default routing, which is recorded as no region so the global price
+  applies (a literal `not_available` region made every call unpriceable on 2026-09-28).
+  `cost` is kept as `upstream_cost_estimate_usd` only.
 - gpt-5-nano spent the whole 120-token output budget on `reasoning_tokens` when no
   `reasoning_effort` was given; the workload now sends `minimal`.
 

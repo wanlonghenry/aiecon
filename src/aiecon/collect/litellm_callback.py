@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+from aiecon.adapters.base import known_region
 from aiecon.adapters.litellm import LITELLM_ALLOWLIST
 from aiecon.collect.writer import JsonlWriter
 from aiecon.config import now_ms
@@ -447,7 +448,9 @@ class EnvelopeCollector:
                 # LiteLLM adds these two short codes to the usage object on some paths
                 # (seen live for Anthropic); they select prices, so keep them as codes
                 service_tier = _safe_code(_get(usage_obj, "service_tier"))
-                inference_region = _safe_code(_get(usage_obj, "inference_geo"))
+                # Anthropic answers "not_available" when no region was pinned: that is the
+                # default (global) routing, not a region, so only known codes are kept
+                inference_region = known_region(_safe_code(_get(usage_obj, "inference_geo")))
                 if drift:
                     for key, value in (
                         ("service_tier", service_tier),

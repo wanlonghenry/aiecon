@@ -247,3 +247,20 @@ def test_route_name_is_never_the_resolved_model_and_usage_codes_are_kept(tmp_pat
         assert call.schema_drift == {"surprising_field": 1, "nested_text": 1}
     finally:
         storage.close()
+
+
+def test_not_available_inference_geo_is_unknown_not_a_region(tmp_path: Path) -> None:
+    """Seen live: Anthropic reports inference_geo "not_available" for default routing; a
+    literal code there would make every call unpriceable (no such region in the catalog)."""
+
+    collector, raw = make_collector(tmp_path)
+    attempt = collector.begin_attempt(request("claude-fixture"), "completion")
+    resp = response("claude-fixture-v1")
+    resp.usage = {**resp.usage, "service_tier": "standard", "inference_geo": "not_available"}
+    collector.finish_success(attempt, resp, "completion")
+    storage, _stats = ingest(tmp_path, raw)
+    try:
+        call = storage.list_calls("live-test")[0]
+        assert call.inference_region is None and call.service_tier == "standard"
+    finally:
+        storage.close()

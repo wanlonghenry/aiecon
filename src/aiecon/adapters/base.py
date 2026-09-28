@@ -27,6 +27,15 @@ class NormalizedUsage:
             self.notes.append(code)
 
 
+KNOWN_INFERENCE_REGIONS = frozenset({"global", "us"})
+"""Region codes that select prices. Anything else (Anthropic answers ``not_available`` for
+default routing) is recorded as unknown so the estimator applies the default global price."""
+
+
+def known_region(value: str | None) -> str | None:
+    return value if value in KNOWN_INFERENCE_REGIONS else None
+
+
 def get_int(usage: Mapping[str, Any] | None, *path: str) -> int | None:
     """Fetch a nested non-negative integer; anything else is ``None``."""
 
