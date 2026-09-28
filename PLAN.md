@@ -1144,14 +1144,15 @@ separates what is built from what is verified and how.
 | --- | --- | --- |
 | 1. LiteLLM proxy install + collection smoke test | done (2026-09-27) | proxy 1.102.1 with `examples/litellm/config.yaml`; envelopes carry provider, model group, litellm version; streaming terminal gap found and fixed (G01) |
 | 2. Dry run of the workload script | done (2026-09-28 UTC) | 18-call plan, conservative reserve $0.321; `--providers` subset and `--clear-stop` added after the first live attempt |
-| 3. Paid workload (budget-capped) | partial | run by the user from PowerShell (the agent may not spend). OpenAI: 8 of 9 calls priced ($0.002034), one earlier attempt refused for lack of credits and recorded as a failed attempt with unknown cost; automatic caching observed (27,264 of 27,331 prompt tokens cached on the 2nd/3rd prefix call); streaming terminal came from the log event as designed. Anthropic: first call refused ("credit balance is too low"), recorded as `invalid_request`; pending credits |
+| 3. Paid workload (budget-capped) | done (2026-09-28 UTC) | run by the user from PowerShell (the agent may not spend). Final workspace `.aiecon/live`: 19 calls, 18 priced + 1 known-cost lower bound, known cost $0.050044. OpenAI 8 calls (gpt-5-nano, one stream; automatic caching: 27,264 of 27,331 prompt tokens cached on the repeat prefix calls). Anthropic 11 calls (claude-haiku-4-5-20251001, two streams; explicit 5m cache: 30,812 tokens written once, read twice). Three live findings fixed on the way: nested `cache_creation_token_details` layout (first prefix call stays tier-unknown), route name reported as model on Anthropic streams, `inference_geo: not_available` recorded as a region. Earlier attempts (account without credits, first run) archived under `.aiecon/live-run1-2026-09-28` |
 | 4. Provider reports | pending | `billing sync` needs admin keys (model keys cannot read usage/cost); fallback: console export via `billing import` |
-| 5. Reconcile + report on live data | done for the local side | `reconcile --start 2026-09-28 --end 2026-09-29`: `no_provider_cost` for both scopes (no snapshots); report rendered after fixing a template crash on absent usage metrics; validation lines stay "live reconciliation pending" |
+| 5. Reconcile + report on live data | done for the local side | `reconcile --start 2026-09-28 --end 2026-09-29`: `no_provider_cost` for both scopes (no snapshots); report at `.aiecon/live/reports/report.html` (context economics: OpenAI prefix group `already_cached`, Anthropic prefix group observed 5m writes/reads); validation lines stay "live reconciliation pending" until phase 4 |
 
-Captured live: the OpenAI `litellm_standard` usage layout (fixture updated); the Anthropic
-sample is still documentation-derived. Findings from the live data folded back into the
-code: estimated prefix tokens capped at the provider input total (context economics),
-`reasoning_effort=minimal` for gpt-5-nano in the workload, unique run ids per execution.
+Captured live: both `litellm_standard` usage layouts (fixtures updated). Findings from the
+live data folded back into the code: estimated prefix tokens capped at the provider input
+total (context economics), `reasoning_effort=minimal` for gpt-5-nano in the workload,
+unique run ids per execution, `--providers` / `--clear-stop`, nested Anthropic cache
+breakdown, route-name model ids discarded, unknown `inference_geo` values ignored.
 
 ### 19.4 Evidence
 
@@ -1167,8 +1168,6 @@ code: estimated prefix tokens capped at the provider input total (context econom
 ### 19.5 Open gaps
 
 - L1 live reconciliation for both providers (phase 4 above needs admin keys or console
-  exports); Anthropic live collection needs account credits; OpenAI cost-report latency
-  unverified from an official page.
-- Real LiteLLM usage payload fixture for Anthropic (documentation-derived today).
+  exports); OpenAI cost-report latency unverified from an official page.
 - Streams abandoned by the client stay `in_flight` with unknown cost (documented).
 - Everything listed in `KNOWN_LIMITATIONS.md`.

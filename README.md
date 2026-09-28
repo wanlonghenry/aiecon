@@ -53,7 +53,7 @@ only prerequisites.
 | Streaming | OpenAI final usage chunk; Anthropic cumulative `message_delta` merged with `message_start` | fixture-verified |
 | Prices | `catalogs/live-demo.json`: gpt-5-nano, claude-haiku-4-5, claude-sonnet-5, retrieved 2026-09-26 from the official pricing pages; synthetic catalog for the demo | verified against docs |
 | OpenAI reports | `GET /v1/organization/usage/completions`, `GET /v1/organization/costs` (admin key) | mock-transport tests; live collection + pricing verified 2026-09-28 (8 calls); **live reconciliation pending** (no admin key) |
-| Anthropic reports | `GET /v1/organizations/usage_report/messages`, `GET /v1/organizations/cost_report` (admin key, amounts in cents) | mock-transport tests; **live reconciliation pending** |
+| Anthropic reports | `GET /v1/organizations/usage_report/messages`, `GET /v1/organizations/cost_report` (admin key, amounts in cents) | mock-transport tests; live collection + pricing verified 2026-09-28 (11 calls); **live reconciliation pending** (no admin key) |
 | File import | normalized CSV / JSON + manifest with source hash | fixture-verified |
 
 Details, verbatim contract quotes and unverified items: [`docs/provider-assumptions.md`](docs/provider-assumptions.md).
