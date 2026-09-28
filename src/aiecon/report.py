@@ -140,6 +140,47 @@ def _display_path(path_text: str, root: Path | None) -> str:
     return "/".join(parts)
 
 
+def validation_lines(data_kind: str, cost_buckets: list, usage_buckets: list) -> list[str]:
+    """One line per provider saying what was actually compared in this report.
+
+    Synthetic data never claims live validation. Live data claims exactly the comparisons
+    present in the selected reconcile run: monetary buckets with a provider amount, usage
+    buckets with provider usage; everything else is "pending".
+    """
+
+    lines = []
+    for provider in ("openai", "anthropic"):
+        if data_kind == "synthetic":
+            lines.append(f"{provider}: fixture-verified parsing; live reconciliation pending")
+            continue
+        money = [
+            b
+            for b in cost_buckets
+            if b.provider.value == provider and b.provider_cost_usd is not None
+        ]
+        usage = [
+            b
+            for b in usage_buckets
+            if b.provider.value == provider and b.provider_usage is not None
+        ]
+        parts = []
+        if money:
+            counts = Counter(b.status.value for b in money)
+            days = len({b.window_start_ms for b in money})
+            summary = ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
+            parts.append(f"money compared on {days} UTC day(s): {summary}")
+        else:
+            parts.append("money: live reconciliation pending (no provider cost in this window)")
+        if usage:
+            counts = Counter(b.status.value for b in usage)
+            summary = ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
+            parts.append(f"usage compared: {summary}")
+        else:
+            parts.append("usage: no provider usage report in this window")
+        lines.append(f"{provider}: " + "; ".join(parts))
+    return lines
+
+
 # ------------------------------------------------------------------- building
 def build_report(
     storage: Storage,
@@ -335,10 +376,7 @@ def build_report(
         )
     limitations = LimitationsSection(
         validation_status=validation_status
-        or [
-            "openai: fixture-verified parsing; live reconciliation pending",
-            "anthropic: fixture-verified parsing; live reconciliation pending",
-        ],
+        or validation_lines(data_kind.value, cost_buckets, usage_buckets),
         unpriced_reasons=dict(sorted(unpriced_reasons.items())),
         unsupported_charges_usd=reconciliation.total_unmodeled_charges_usd,
         provisional_snapshots=sum(1 for s in used_snapshots if s.finality.value == "provisional"),

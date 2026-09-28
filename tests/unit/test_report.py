@@ -225,3 +225,25 @@ def test_stale_runs_are_refused_unless_explicitly_allowed(tmp_path: Path) -> Non
         run_pricing(storage, "demo-support-v1", repriced, now_ms=11)
         with pytest.raises(WorkspaceError, match="pricing run"):
             build_report(storage, "demo-support-v1", now_ms=12, workspace_root=ws.root)
+
+
+def test_validation_lines_claim_only_what_was_compared() -> None:
+    from aiecon.report import validation_lines
+
+    synthetic = validation_lines("synthetic", [], [])
+    assert all("live reconciliation pending" in line for line in synthetic)
+    assert validation_lines("live", [], []) == [
+        "openai: money: live reconciliation pending (no provider cost in this window); "
+        "usage: no provider usage report in this window",
+        "anthropic: money: live reconciliation pending (no provider cost in this window); "
+        "usage: no provider usage report in this window",
+    ]
+
+
+def test_live_report_lines_follow_the_reconcile_buckets(demo_report) -> None:
+    """Synthetic demo: both providers reconcile against fixtures, yet the lines never claim
+    live validation."""
+
+    report, _html = demo_report
+    assert report.monetary_reconciliation.buckets  # fixtures produced comparisons
+    assert all("live reconciliation pending" in s for s in report.limitations.validation_status)
